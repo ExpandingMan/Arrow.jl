@@ -36,6 +36,19 @@ end
 """
     _getbit
 
-This deliberate elides bounds checking.
+This deliberately elides bounds checking.
 """
 _getbit(v::UInt8, n::Integer) = Bool((v & 0x02^(n-1)) >> (n-1))
+
+"""
+    _setbit
+
+This also deliberately elides bounds checking.
+"""
+function _setbit(v::UInt8, b::Bool, n::Integer)
+    if b
+        v | 0x02^(n-1)
+    else
+        v & (0xff ⊻ 0x02^(n-1))
+    end
+end

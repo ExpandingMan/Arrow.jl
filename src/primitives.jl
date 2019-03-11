@@ -10,7 +10,6 @@ struct Primitive{T} <: AbstractPrimitive{T}
     ℓ::Int
 end
 
-# TODO need to check how much of this can be re-absorbed into ArrowVector
 Base.size(p::Primitive) = (p.ℓ,)
 
 start_idx(p::Primitive) = p.idx
@@ -43,7 +42,76 @@ end
 end
 
 Base.getindex(p::Primitive, i::Integer) = unsafe_getvalue(p, i)
+
+bytecount(p::Primitive) = length(p)*sizeof(eltype(p))
+bitcount(p::Primitive) = 8bytecount(p)
+
+@propagate_inbounds getbyte(p::Primitive, i::Integer) = p.buffer[start_idx(p) + i - 1]
+@propagate_inbounds function getbit(p::Primitive, i::Integer)
+    a, b = fldmod1(i, 8)
+    _getbit(getbyte(p, a), b)
+end
+
+@propagate_inbounds function setbyte!(p::Primitive, b::UInt8, i::Integer)
+    p.buffer[start_idx(p) + i - 1] = b
+end
+@propagate_inbounds function setbit!(p::Primitive, v::Bool, i::Integer)
+    a, b = fldmod1(i, 8)
+    setbyte!(p, _setbit(getbyte(p, a), v, b), a)
+end
+
+# PERF NOTE: this is worryingly slow
+function Base.setindex!(p::Primitive{T}, v, i::Integer) where {T}
+    p.buffer[start_idx(p, i):end_idx(p, i)] = reinterpret(UInt8, [convert(T, v)])
+    v
+end
+
+values(p::Primitive) = p
 #============================================================================================
     \end{Primitive}
+============================================================================================#
+
+#============================================================================================
+    \start{BitPrimitive}
+============================================================================================#
+struct BitPrimitive <: ArrowVector{Bool}
+    values::Primitive{UInt8}
+    ℓ::Int
+end
+
+Base.size(p::BitPrimitive) = (p.ℓ,)
+function Base.getindex(p::BitPrimitive, i::Integer)
+    @boundscheck checkbounds(p, i)
+    @inbounds getbit(values(p), i)
+end
+function Base.setindex!(p::BitPrimitive, v, i::Integer)
+    @boundscheck checkbounds(p, i)
+    @inbounds setbit!(values(p), convert(Bool, v), i)
+    v
+end
+#============================================================================================
+    \end{BitPrimitive}
+============================================================================================#
+
+#============================================================================================
+    \start{NullablePrimitive}
+============================================================================================#
+struct NullablePrimitive{T} <: AbstractPrimitive{Union{T,Missing}}
+    values::Primitive{T}
+    bitmask::BitPrimitive
+end
+#============================================================================================
+    \end{NullablePrimitive}
+============================================================================================#
+
+#============================================================================================
+    \start{NullableBitPrimitive}
+============================================================================================#
+struct NullableBitPrimitive <: ArrowVector{Union{Bool,Missing}}
+    values::BitPrimitive
+    bitmask::BitPrimitive
+end
+#============================================================================================
+    \end{NullableBitPrimitive}
 ============================================================================================#
 
