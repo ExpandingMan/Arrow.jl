@@ -71,6 +71,7 @@ include("utils.jl")
 include("primitives.jl")
 include("lists.jl")
 include("structs_unions.jl")
+include("constructors.jl")
 
 
 end  # module Arrow
