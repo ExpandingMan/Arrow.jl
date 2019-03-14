@@ -37,7 +37,7 @@ function BitPrimitive(v::AbstractVector{Bool}; pad::Bool=true)
 end
 
 function Base.write(io::IO, ::Type{BitPrimitive}, v::AbstractVector)
-    writepadded(io, bitpack(v, pad=false))
+    writepadded(io, values(bitpack(v, pad=false)).buffer)
 end
 #============================================================================================
     \end{BitPrimitive Constructors}
@@ -61,7 +61,7 @@ end
 bitmask(v::AbstractVector; pad::Bool=true) = BitPrimitive(.!ismissing.(v), pad=pad)
 
 function Base.write(io::IO, ::typeof(bitmask), v::AbstractVector)
-    writepadded(io, bitmask(v, pad=false))
+    writepadded(io, values(bitmask(v, pad=false)).buffer)
 end
 #============================================================================================
     \end{bitmasks}
@@ -101,7 +101,7 @@ end
 
 function Base.write(io::IO, ::typeof(offsets), v::AbstractVector{T}
                    ) where {T<:Union{Vector,String}}
-    writepadded(io, offsets(v, pad=false))
+    writepadded(io, offsets(v, pad=false).buffer)
 end
 #============================================================================================
     \end{offsets}
