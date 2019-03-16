@@ -52,9 +52,6 @@ bitmaskbytes(v::AbstractVector; pad::Bool=true) = bitmaskbytes(length(v), pad=pa
 function bitmask!(buffer::Vector{UInt8}, v::AbstractVector, i::Integer=1; pad::Bool=true)
     BitPrimitive!(buffer, .!ismissing.(v), i)
 end
-function bitmask!(buffer::Vector{UInt8}, v::AbstractVector; pad::Bool=true)
-    bitmask!(buffer, 1, v, pad=pad)
-end
 function bitmask(v::AbstractVector, blen::Integer, i::Integer=1; pad::Bool=true)
     BitPrimitive(.!ismissing.(v), blen, i, pad=pad)
 end
@@ -94,8 +91,7 @@ function offsets(v::AbstractVector{T}, blen::Integer, i::Integer=1;
                  pad::Bool=true) where {T<:Union{Vector,String}}
     offsets!(zeros(UInt8, blen), v, i)
 end
-function offsets(v::AbstractVector{T}, i::Integer=1; pad::Bool=true
-                ) where {T<:Union{Vector,String}}
+function offsets(v::AbstractVector{T}; pad::Bool=true) where {T<:Union{Vector,String}}
     offsets(v, offsetsbytes(v, pad=pad), i)
 end
 

@@ -66,6 +66,8 @@ function Base.setindex!(p::ArrowVector{Union{T,Missing}}, v, i::Integer) where {
     v
 end
 
+include("metadata/Metadata.jl")
+using .Metadata; const Meta = Metadata
 
 include("utils.jl")
 include("primitives.jl")
