@@ -3,111 +3,156 @@
 
 @enum(MetadataVersion::Int16, V1, V2, V3, V4)
 
-# NOTE: we use Julia's `Nothing` as the `Null` type
+mutable struct Null end
+@ALIGN Null 1
 
-struct Struct end
+mutable struct Struct end
+@ALIGN Struct 1
 
-struct List end
+mutable struct List end
+@ALIGN List 1
 
 @with_kw mutable struct FixedSizeList
-    listSize::Int32  # Number of list items per value
+    listSize::Int32 = 0  # Number of list items per value
 end
+@ALIGN FixedSizeList 1
+FB.slot_offsets(::Type{FixedSizeList}) = UInt32[4]
 
 @with_kw mutable struct Map
-    keysSorted::Bool  # Set to true if the keys within each value are sorted
+    keysSorted::Bool = false  # Set to true if the keys within each value are sorted
 end
+@ALIGN Map 1
+FB.slot_offsets(::Type{Map}) = UInt32[4]
 
-@enum(UnionMode::Int16, Sparse, Dense)
+@enum(UnionMode::Int16, UnionModeSparse=0, UnionModeDense=1)
 
 @with_kw mutable struct Union_
-    mode::UnionMode
-    typeIds::Vector{Int32}  # optional, describes typeid of each child
+    mode::UnionMode = 0
+    typeIds::Vector{Int32} = []  # optional, describes typeid of each child
 end
+@ALIGN Union_ 1
+FB.slot_offsets(::Type{Union_}) = UInt32[4, 6]
 
 @with_kw mutable struct Int_
-    bitWidth::Int32  # restricted to 8, 16, 32, and 64 in v1
-    is_signed::Bool
+    bitWidth::Int32 = 0  # restricted to 8, 16, 32, and 64 in v1
+    is_signed::Bool = false
 end
+@ALIGN Int_ 1
+FB.slot_offsets(::Type{Int_}) = UInt32[4, 6]
 
-@enum(Precision::Int16, HALF, SINGLE, DOUBLE)
+@enum(Precision::Int16, PrecisionHALF=0, PrecisionSINGLE=1, PrecisionDOUBLE=2)
 
 @with_kw mutable struct FloatingPoint
-    precision::Precision
+    precision::Precision = 0
 end
+@ALIGN FloatingPoint 1
+FB.slot_offsets(::Type{FloatingPoint}) = UInt32[4]
 
-struct Utf8 end
+mutable struct Utf8 end
+@ALIGN Utf8 1
 
-struct Binary end
+mutable struct Binary end
+@ALIGN Binary 1
 
 @with_kw mutable struct FixedSizeBinary
-    byteWidth::Int32  # number of bytes per value
+    byteWidth::Int32 = 0  # number of bytes per value
 end
+@ALIGN FixedSizeBinary 1
+FB.slot_offsets(::Type{FixedSizeBinary}) = UInt32[4]
 
-struct Bool_ end
+mutable struct Bool_ end
+@ALIGN Bool_ 1
 
 @with_kw mutable struct Decimal
-    precision::Int32  # Total number of decimal digits
-    scale::Int32  # Number of digits after the decimal point "."
+    precision::Int32 = 0  # Total number of decimal digits
+    scale::Int32 = 0  # Number of digits after the decimal point "."
 end
+@ALIGN Decimal 1
+FB.slot_offsets(::Type{Decimal}) = UInt32[4,6]
 
 # we prepend the `d` to MILLISECOND to distinguish from TimeUnit
-@enum(DateUnit::Int16, DAY, dMILLISECOND)
+@enum(DateUnit::Int16, DateUnitDAY=0, DateUnitMILLISECOND=1)
 
 @with_kw mutable struct Date_
-    unit::DateUnit = dMILLISECOND
+    unit::DateUnit = 1
 end
+@ALIGN Date_ 1
+FB.slot_offsets(::Type{Date_}) = UInt32[4]
 
-@enum(TimeUnit::Int16, SECOND, MILLISECOND, MICROSECOND, NANOSECOND)
+@enum TimeUnit::Int16 begin
+    TimeUnitSECOND = 0
+    TimeUnitMILLISECOND = 1
+    TimeUnitMICROSECOND = 2
+    TimeUnitNANOSECOND = 3
+end
 
 @with_kw mutable struct Time_
-    unit::TimeUnit = MILLISECOND
+    unit::TimeUnit = 1
     bitWidth::Int32 = 32
 end
+@ALIGN Time_ 1
+FB.slot_offsets(::Type{Time_}) = UInt32[4]
 
 @with_kw mutable struct Timestamp
-    unit::TimeUnit
-    timezone::String
+    unit::TimeUnit = 0
+    timezone::String = ""
 end
+@ALIGN Timestamp 1
+FB.slot_offsets(::Type{Timestamp}) = UInt32[4,6]
 
-@enum(IntervalUnit::Int16, YEAR_MONTH, DAY_TIME)
+@enum(IntervalUnit::Int16, IntervalUnitYEAR_MONTH=0, IntervalUnitDAY_TIME=1)
 
 @with_kw mutable struct Interval
-    unit::IntervalUnit
+    unit::IntervalUnit = 0
 end
+@ALIGN Interval 1
+FB.slot_offsets(::Type{Interval}) = UInt32[4]
 
-@UNION DType (Nothing,Int_,FloatingPoint,Binary,Utf8,Bool_,Decimal,Date_,Time_,
+@UNION DType (Nothing,Null,Int_,FloatingPoint,Binary,Utf8,Bool_,Decimal,Date_,Time_,
               Timestamp,Interval,List,Struct,Union_,FixedSizeBinary,FixedSizeList,
               Map)
 
 @with_kw mutable struct KeyValue
-    key::String
-    value::String
+    key::String = ""
+    value::String = ""
 end
+@ALIGN KeyValue 1
+FB.slot_offsets(::Type{KeyValue}) = UInt32[4,6]
 
 @with_kw mutable struct DictionaryEncoding
-    id::Int64
-    indexType::Int_
-    isOrdered::Bool_
+    id::Int64 = 0
+    indexType::Union{Int_,Nothing} = nothing
+    isOrdered::Bool = false
 end
+@ALIGN DictionaryEncoding 1
+FB.slot_offsets(::Type{DictionaryEncoding}) = UInt32[4,6,8]
 
 @with_kw mutable struct Field
-    name::String
-    nullable::Bool
-    dtype::DType
-    dictionary::DictionaryEncoding
-    children::Vector{Field}
-    custom_metadata::Vector{KeyValue}
+    name::String = ""
+    nullable::Bool = false
+    dtype_type::UInt8 = 0
+    dtype::DType = nothing
+    dictionary::Union{DictionaryEncoding,Nothing} = nothing
+    children::Vector{Field} = []
+    custom_metadata::Vector{KeyValue} = []
 end
+@ALIGN(Field, 1)
+FB.slot_offsets(::Type{Field}) = UInt32[4,6,8,10,12,14,16]
 
-@enum(Endianness::Int16, Little, Big)
+@enum(Endianness::Int16, EndiannessLittle=0, EndiannessBig=1)
 
-@with_kw mutable struct Buffer
+@STRUCT struct Buffer
     offset::Int64
     length::Int64
 end
+@ALIGN(Buffer, 8)
 
 @with_kw mutable struct Schema
-    endianness::Endianness = Little
-    fields::Vector{Field}
-    custom_metadata::Vector{KeyValue}
+    endianness::Endianness = 0
+    fields::Vector{Field} = []
+    custom_metadata::Vector{KeyValue} = []
 end
+@ALIGN Schema 1
+FB.slot_offsets(::Type{Schema}) = UInt32[4,6,8]
+FlatBuffers.root_type(::Type{<:Schema}) = true
+
