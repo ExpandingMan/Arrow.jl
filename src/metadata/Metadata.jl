@@ -67,6 +67,14 @@ arrowtype(::Type{UInt64}) = Int_(64, false)
 arrowtype(::Type{UInt128}) = Int_(128, false)
 
 
+# TODO this probably isn't permanent, but it's useful for now
+function readmessage(buf::AbstractVector{UInt8}, i::Integer, j::Integer=length(buf))
+    FB.read(Message, @view buf[i:j])
+end
+readmessage(io::IO) = FB.deserialize(io, Message)
+
+
+export readmessage
 export FB
 
 end # module
