@@ -1,7 +1,8 @@
 
 # this file should mirror Schema.fbs
 
-@enum(MetadataVersion::Int16, V1, V2, V3, V4)
+@enum(MetadataVersion::Int16, MetadataVersionV1=0, MetadataVersionV2=1,
+      MetadataVersionV3=2, MetadataVersionV4=3)
 
 mutable struct Null end
 @ALIGN Null 1

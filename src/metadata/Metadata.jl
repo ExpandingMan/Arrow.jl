@@ -4,6 +4,8 @@ using Dates
 using FlatBuffers; const FB = FlatBuffers
 
 include("schema.jl")
+include("tensor.jl")
+include("sparsetensor.jl")
 include("message.jl")
 
 # TODO have this give decent error messages

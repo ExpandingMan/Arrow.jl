@@ -25,8 +25,7 @@ end
 @ALIGN DictionaryBatch 1
 FB.slot_offsets(::Type{DictionaryBatch}) = UInt32[4,6,8]
 
-# TODO need to do tensors!!
-@UNION MessageHeader (Nothing,Schema,DictionaryBatch,RecordBatch)
+@UNION MessageHeader (Nothing,Schema,DictionaryBatch,RecordBatch,Tensor,SparseTensor)
 
 @with_kw mutable struct Message
     version::MetadataVersion = 0
