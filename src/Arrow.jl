@@ -1,5 +1,6 @@
 module Arrow
 
+using Debugger # TODO this is only here for development, REMOVE!
 using CategoricalArrays
 
 using Base: @propagate_inbounds
@@ -13,7 +14,6 @@ struct NotImplementedError <: Exception
 end
 
 
-# TODO might change the name of this to "RawVector" or something
 abstract type ArrowVector{T} <: AbstractVector{T} end
 
 

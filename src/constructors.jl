@@ -103,3 +103,44 @@ end
     \end{offsets}
 ============================================================================================#
 
+#============================================================================================
+    \begin{from RecordBatch}
+============================================================================================#
+
+# TODO how to deal with cases when we are getting underlying values, like data for strings??
+function primitive(::Type{T}, ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8},
+                   i::Integer=1) where {T}
+    Primitive{T}(buf, i + b.offset, ϕn.length)
+end
+# TODO not sure we really need the below methods
+function primitive(::Type{T}, rb::Meta.RecordBatch, node_idx::Integer, buf_idx::Integer,
+                   buf::Vector{UInt8}, i::Integer=1) where {T}
+    primitive(T, rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
+end
+
+function bitprimitive(ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8}, i::Integer=1)
+    BitPrimitive(Primitive{UInt8}(buf, i + b.offset, b.length), ϕn.length)
+end
+function bitprimitive(rb::Meta.RecordBatch, node_idx::Integer, buf_idx::Integer,
+                      buf::Vector{UInt8}, i::Integer=1)
+    bitprimitive(rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
+end
+
+function bitmask(ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8}, i::Integer=1)
+    bitprimitive(ϕn, b, buf, i)
+end
+function bitmask(rb::Meta.RecordBatch, node_idx::Integer, buf_idx::Integer,
+                 buf::Vector{UInt8}, i::Integer=1)
+    bitmask(rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
+end
+
+function offsets(ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8}, i::Integer=1)
+    Primitive{DefaultOffset}(buf, i + b.offset, ϕn.length+1)
+end
+function offsets(rb::Meta.RecordBatch, node_idx::Integer, buf_idx::Integer,
+                 buf::Vector{UInt8}, i::Integer=1)
+    offsets(rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
+end
+#============================================================================================
+    \end{from RecordBatch}
+============================================================================================#
