@@ -106,20 +106,17 @@ end
 #============================================================================================
     \begin{from RecordBatch}
 ============================================================================================#
-
-# TODO how to deal with cases when we are getting underlying values, like data for strings??
 function primitive(::Type{T}, ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8},
                    i::Integer=1) where {T}
-    Primitive{T}(buf, i + b.offset, ϕn.length)
+    Primitive{T}(buf, i + b.offset, fld(b.length, sizeof(T)))
 end
-# TODO not sure we really need the below methods
 function primitive(::Type{T}, rb::Meta.RecordBatch, node_idx::Integer, buf_idx::Integer,
                    buf::Vector{UInt8}, i::Integer=1) where {T}
     primitive(T, rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
 end
 
 function bitprimitive(ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8}, i::Integer=1)
-    BitPrimitive(Primitive{UInt8}(buf, i + b.offset, b.length), ϕn.length)
+    BitPrimitive(primitive(UInt8, ϕn, b, buf, i), ϕn.length)
 end
 function bitprimitive(rb::Meta.RecordBatch, node_idx::Integer, buf_idx::Integer,
                       buf::Vector{UInt8}, i::Integer=1)
