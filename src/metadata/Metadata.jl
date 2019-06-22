@@ -43,11 +43,11 @@ function juliatype(int::Int_)
     end
 end
 function juliatype(fp::FloatingPoint)
-    if fp.precision == HALF
+    if fp.precision == PrecisionHALF
         Float16
-    elseif fp.precision == SINGLE
+    elseif fp.precision == PrecisionSINGLE
         Float32
-    elseif fp.precision == DOUBLE
+    elseif fp.precision == PrecisionDOUBLE
         Float64
     else
         throw(InvalidMetadataError())
@@ -74,7 +74,7 @@ end
 readmessage(io::IO) = FB.deserialize(io, Message)
 
 
-export readmessage
+export juliatype, arrowtype, readmessage
 export FB
 
 end # module

@@ -1,6 +1,5 @@
 module Arrow
 
-using Debugger # TODO this is only here for development, REMOVE!
 using CategoricalArrays
 
 using Base: @propagate_inbounds
