@@ -6,7 +6,7 @@ const DefaultOffset = Int32
     \begin{List}
 ============================================================================================#
 # note that T = eltype(eltype(l))
-struct List{V,T} <: ArrowVector{Vector{T}}
+struct List{T,V<:AbstractVector{T}} <: ArrowVector{Vector{T}}
     values::V
     offsets::Primitive{DefaultOffset}
 end
@@ -23,20 +23,17 @@ end
 ============================================================================================#
 
 #============================================================================================
-    \begin{NullableList}
+    \begin{NullableVector}
 ============================================================================================#
-struct NullableList{V,T} <: ArrowVector{Union{Vector{T},Missing}}
-    list::List{V,T}
+struct NullableVector{T,V<:AbstractVector} <: ArrowVector{Union{T,Missing}}
+    values::V
     bitmask::BitPrimitive
 end
 
-unmasked(l::NullableList) = l.list
+unmasked(v::NullableVector) = v.values
+offsets(v::NullableVector) = unmasked(v).offsets
 
-Base.size(l::NullableList) = (length(unmasked(l)),)
-function Base.setindex!(l::NullableList, v, i)
-    throw(NotImplementedError("Cannot set indices on `NullableList` objects."))
-end
+Base.size(v::NullableVector) = size(unmasked(v))
 #============================================================================================
-    \end{NullableList}
+    \end{NullableVector}
 ============================================================================================#
-

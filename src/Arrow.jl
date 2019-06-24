@@ -1,6 +1,6 @@
 module Arrow
 
-using CategoricalArrays
+using LazyArrays, CategoricalArrays
 
 using Base: @propagate_inbounds
 
@@ -46,8 +46,9 @@ unmasked(A::ArrowVector) = values(A)
 
 offset(A::ArrowVector, i::Integer) = offsets(unmasked(A))[i]
 offset_range(A::ArrowVector, i::Integer) = offset(unmasked(A), i):offset(unmasked(A), i+1)
-offset1(A::ArrowVector, i::Integer) = offset(unmasked(A), i) + 1
-offset1_range(A::ArrowVector, i::Integer) = offset1(unmasked(A), i):offset1(unmasked(A), i+1)
+function offset1_range(A::ArrowVector, i::Integer)
+    (offset(unmasked(A), i)+1):offset(unmasked(A), i+1)
+end
 
 Base.size(p::ArrowVector) = size(unmasked(p))
 
@@ -70,7 +71,7 @@ using .Metadata; const Meta = Metadata
 
 include("utils.jl")
 include("primitives.jl")
-include("lists.jl")
+include("wrappers.jl")
 include("structs_unions.jl")
 include("constructors.jl")
 

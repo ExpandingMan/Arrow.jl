@@ -139,18 +139,59 @@ function offsets(rb::Meta.RecordBatch, buf::Vector{UInt8},
     offsets(rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
 end
 
+function _check_empty_buffer(rb::Meta.RecordBatch, node_idx::Integer, buf_idx::Integer)
+    rb.nodes[node_idx].null_count == 0 && rb.buffers[buf_idx].length == 0
+end
+
 # TODO is the ordering of the sub-buffers canonical???
-# TODO less the below is the right way to do this
-function build(::Type{Primitive{T}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
+function build(::Type{AbstractVector{T}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
                node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1) where {T}
     primitive(T, rb, buf, node_idx, buf_idx, i), node_idx+1, buf_idx+1
 end
-function build(::Type{NullablePrimitive{T}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
-               node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1) where {T}
+function build(::Type{AbstractVector{Union{T,Missing}}}, rb::Meta.RecordBatch,
+               buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
+               i::Integer=1) where {T}
+    # handle cases where schema says nullable, but mask is missing
+    if _check_empty_buffer(rb, node_idx, buf_idx)
+        return build(AbstractVector{T}, rb, buf, node_idx, buf_idx+1, i)
+    end
     b = bitmask(rb, buf, node_idx, buf_idx, i)
     buf_idx += 1
-    v = primitive(T, rb, buf, node_idx, buf_idx, i)
-    NullablePrimitive{T}(v, b), node_idx+1, buf_idx+1
+    v, node_idx, buf_idx = build(AbstractVector{T}, rb, buf, node_idx, buf_idx, i)
+    NullableVector{T,typeof(v)}(v, b), node_idx, buf_idx
+end
+function build(::Type{AbstractVector{Vector{T}}}, rb::Meta.RecordBatch,
+               buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
+               i::Integer=1) where {T}
+    o = offsets(rb, buf, node_idx, buf_idx, i)
+    buf_idx += 1
+    v, node_idx, buf_idx = build(AbstractVector{T}, rb, buf, node_idx, buf_idx, i)
+    List{eltype(v),typeof(v)}(v, o), node_idx, buf_idx
+end
+function build(::Type{AbstractVector{String}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
+               node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1) where {T}
+    l, node_idx, buf_idx = build(AbstractVector{Vector{UInt8}}, rb, buf, node_idx, buf_idx, i)
+    BroadcastArray(stringify, l), node_idx, buf_idx
+end
+function build(::Type{AbstractVector{Union{Vector{T},Missing}}}, rb::Meta.RecordBatch,
+               buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
+               i::Integer=1) where {T}
+    if _check_empty_buffer(rb, node_idx, buf_idx)
+        return build(AbstractVector{Vector{T}}, rb, buf, node_idx, buf_idx+1, i)
+    end
+    b = bitmask(rb, buf, node_idx, buf_idx, i)
+    buf_idx += 1
+    l, node_idx, buf_idx = build(AbstractVector{Vector{T}}, rb, node_idx, buf_idx, i)
+    NullableVector{T,typeof(v)}(l, b), node_idx+1, buf_idx+1
+end
+function build(::Type{AbstractVector{Union{String,Missing}}}, rb::Meta.RecordBatch,
+               buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
+    if _check_empty_buffer(rb, node_idx, buf_idx)
+        return build(AbstractVector{String}, rb, buf, node_idx, buf_idx+1, i)
+    end
+    l, node_idx, buf_idx = build(AbstractVector{Union{Vector{T},Missing}}, rb, buf,
+                                 node_idx, buf_idx, i)
+    BroadcastArray(stringify, l), node_idx, buf_idx
 end
 #============================================================================================
     \end{from RecordBatch}
@@ -159,29 +200,38 @@ end
 #============================================================================================
     \begin{build from schema field}
 ============================================================================================#
-const CONTAINER_TYPES = (primitive=Union{Meta.Int_,Meta.FloatingPoint},)
+const CONTAINER_TYPES = (primitive=Union{Meta.Int_,Meta.FloatingPoint},
+                         lists=Meta.List,
+                         strings=Meta.Utf8,
+                        )
 
+# TODO we may also need some way of specifying container types because of dictionaries;
+# either that or we need a separate check whether something is a dictionary
 # TODO incomplete
 function _juliatype(ϕ::Meta.Field)
     if typeof(ϕ.dtype) <: CONTAINER_TYPES.primitive
-        Primitive{juliatype(ϕ.dtype)}
+        juliatype(ϕ.dtype)
+    elseif typeof(ϕ.dtype) <: CONTAINER_TYPES.strings
+        String
+    elseif typeof(ϕ.dtype) <: CONTAINER_TYPES.lists
+        Vector{juliatype(ϕ.children[1])}
     else
         throw(ArgumentError("unrecognized type $(ϕ.dtype)"))
     end
 end
-function _juliatype_nullable(ϕ::Meta.Field)
-    if typeof(ϕ.dtype) <: CONTAINER_TYPES.primitive
-        NullablePrimitive{juliatype(ϕ.dtype)}
-    else
-        throw(ArgumentError("unrecognized type $(ϕ.dtype)"))
-    end
-end
+_juliatype_nullable(ϕ::Meta.Field) = Union{_juliatype(ϕ),Missing}
 
 Meta.juliatype(ϕ::Meta.Field) = ϕ.nullable ? _juliatype_nullable(ϕ) : _juliatype(ϕ)
 
+"""
+    build
+
+This function takes as its arguments Arrow metadata, which it then uses to call other methods
+(with Julia metadata) for constructing arrays.
+"""
 function build(ϕ::Meta.Field, rb::Meta.RecordBatch, buf::Vector{UInt8}, node_idx::Integer=1,
                buf_idx::Integer=1, i::Integer=1)
-    build(juliatype(ϕ), rb, buf, node_idx, buf_idx, i)
+    build(AbstractVector{juliatype(ϕ)}, rb, buf, node_idx, buf_idx, i)
 end
 #============================================================================================
     \end{build from schema field}

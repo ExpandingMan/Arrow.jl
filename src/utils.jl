@@ -93,3 +93,18 @@ function bitpackpadded(A::AbstractVector{Bool})
     vcat(v, zeros(UInt8, npad))
 end
 
+
+"""
+    stringify(v)
+
+Create a string from an `AbstractVector{UInt8}`.  Note that one must be careful in using this
+because it calls `String` which steals underlying data.  In our context we typically call it
+on a `List` the elements of which are of type `Vector{UInt8}`.  This works because `List`
+returns newly allocated buffers which are copied from a view when indexed.  On the other
+hand, this same function would destroy a `Vector{Vector{UInt8}}` because it would steal
+data from the underlying `Vector{UInt8}` elements.
+
+This function is needed from proper handling of `missing`.
+"""
+stringify(::Missing) = missing
+stringify(v::AbstractVector{UInt8}) = String(v)
