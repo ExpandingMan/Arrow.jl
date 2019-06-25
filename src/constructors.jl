@@ -164,6 +164,7 @@ function build(::Type{AbstractVector{Vector{T}}}, rb::Meta.RecordBatch,
                buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
                i::Integer=1) where {T}
     o = offsets(rb, buf, node_idx, buf_idx, i)
+    node_idx += 1
     buf_idx += 1
     v, node_idx, buf_idx = build(AbstractVector{T}, rb, buf, node_idx, buf_idx, i)
     List{eltype(v),typeof(v)}(v, o), node_idx, buf_idx
@@ -171,7 +172,9 @@ end
 function build(::Type{AbstractVector{String}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
                node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1) where {T}
     l, node_idx, buf_idx = build(AbstractVector{Vector{UInt8}}, rb, buf, node_idx, buf_idx, i)
-    BroadcastArray(stringify, l), node_idx, buf_idx
+    # NOTE: the node_idx-1 below is needed because for some unfathomable reason they
+    # decided that strings just have to be different
+    BroadcastArray(stringify, l), node_idx-1, buf_idx
 end
 function build(::Type{AbstractVector{Union{Vector{T},Missing}}}, rb::Meta.RecordBatch,
                buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
@@ -181,17 +184,19 @@ function build(::Type{AbstractVector{Union{Vector{T},Missing}}}, rb::Meta.Record
     end
     b = bitmask(rb, buf, node_idx, buf_idx, i)
     buf_idx += 1
-    l, node_idx, buf_idx = build(AbstractVector{Vector{T}}, rb, node_idx, buf_idx, i)
-    NullableVector{T,typeof(v)}(l, b), node_idx+1, buf_idx+1
+    l, node_idx, buf_idx = build(AbstractVector{Vector{T}}, rb, buf, node_idx, buf_idx, i)
+    NullableVector{T,typeof(l)}(l, b), node_idx, buf_idx
 end
 function build(::Type{AbstractVector{Union{String,Missing}}}, rb::Meta.RecordBatch,
                buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
     if _check_empty_buffer(rb, node_idx, buf_idx)
         return build(AbstractVector{String}, rb, buf, node_idx, buf_idx+1, i)
     end
-    l, node_idx, buf_idx = build(AbstractVector{Union{Vector{T},Missing}}, rb, buf,
+    l, node_idx, buf_idx = build(AbstractVector{Union{Vector{UInt8},Missing}}, rb, buf,
                                  node_idx, buf_idx, i)
-    BroadcastArray(stringify, l), node_idx, buf_idx
+    # NOTE: the node_idx-1 below is needed because for some unfathomable reason they
+    # decided that strings just have to be different
+    BroadcastArray(stringify, l), node_idx-1, buf_idx
 end
 #============================================================================================
     \end{from RecordBatch}

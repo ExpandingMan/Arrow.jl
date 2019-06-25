@@ -6,10 +6,12 @@ data = [
         pa.array([1,2,3,4]),
         pa.array([1.0, None, 2.0, None]),
         pa.array(["fire", "walk", "with", "me"]),
-        pa.array([[1,2], [3,4], [5,6], [7,8,9]])
+        pa.array([[1,2], [3,4], [5,6], [7,8,9]]),
+        pa.array([None, "kirk", "αβabcdefg", "spock"]),
+        pa.array([[1.0, None, 2.0], [2.0, 3.0, 4.0], [None, None], None])
         ]
 
-batch = pa.RecordBatch.from_arrays(data, ["col1", "col2", "col3", "col4"])
+batch = pa.RecordBatch.from_arrays(data, ["col1", "col2", "col3", "col4", "col5", "col6"])
 
 sink = pa.BufferOutputStream()
 
