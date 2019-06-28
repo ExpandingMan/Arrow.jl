@@ -77,6 +77,7 @@ include("primitives.jl")
 include("wrappers.jl")
 include("structs_unions.jl")
 include("constructors.jl")
+include("serialization.jl")
 
 
 end  # module Arrow
