@@ -1,4 +1,5 @@
 using Arrow, BenchmarkTools
+using Debugger
 
 using Arrow: readmessage, build
 
@@ -9,19 +10,26 @@ buf = read("testdata1.dat")
 
 io = IOBuffer(copy(buf))
 
-l1 = reinterpret(Int32, buf[1:4]) # 460, length only of this message
+l1 = reinterpret(Int32, buf[1:4])[1]
 m1 = readmessage(buf, 5)
 sch = m1.header
 
-l2 = reinterpret(Int32, buf[465:468]) # 508, length only of this message
-m2 = readmessage(buf, 469)
+# idx of start of next
+idx = 4 + l1 + m1.bodyLength
+
+l2 = reinterpret(Int32, buf[(idx+1):(idx+4)])[1]
+m2 = readmessage(buf, idx+5)
 rb1 = m2.header
 
-# first buffers start at 680
-buf2 = buf[977:end]
+idx += 4 + l2
 
-l3 = reinterpret(Int32, buf[1345:1348])
-m3 = readmessage(buf, 1349)
+# first data buffer, read arrays from this
+buf2 = buf[(idx+1):end]
+
+idx += m2.bodyLength
+
+l3 = reinterpret(Int32, buf[(idx+1):(idx+4)])[1]
+m3 = readmessage(buf, idx+5)
 rb2 = m3.header
 
 
@@ -43,3 +51,12 @@ p5, node_idx, buf_idx = build(sch.fields[5], rb1, buf2, node_idx, buf_idx)
 #node_idx, buf_idx = 7, 15
 println("building nullable nested list, $node_idx, $buf_idx...")
 p6, node_idx, buf_idx = build(sch.fields[6], rb1, buf2, node_idx, buf_idx)
+
+println("building nested list with strings, $node_idx, $buf_idx...")
+p7, node_idx, buf_idx = build(sch.fields[7], rb1, buf2, node_idx, buf_idx)
+
+println("building nested list with outer nullables, $node_idx, $buf_idx...")
+p8, node_idx, buf_idx = build(sch.fields[8], rb1, buf2, node_idx, buf_idx)
+
+println("building nested list with inner and outer nullables, $node_idx, $buf_idx...")
+p9, node_idx, buf_idx = build(sch.fields[9], rb1, buf2, node_idx, buf_idx)

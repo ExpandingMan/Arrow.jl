@@ -108,3 +108,13 @@ This function is needed from proper handling of `missing`.
 """
 stringify(::Missing) = missing
 stringify(v::AbstractVector{UInt8}) = String(v)
+
+
+"""
+    bare_eltype(v)
+
+Gets the eltype of an `AbstractVector`, except that if this is of the form `Union{T,Missing}`,
+return `T` instead.
+"""
+bare_eltype(::AbstractVector{T}) where {T} = T
+bare_eltype(::AbstractVector{Union{T,Missing}}) where{T} = T

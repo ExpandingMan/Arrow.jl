@@ -25,7 +25,7 @@ end
 #============================================================================================
     \begin{NullableVector}
 ============================================================================================#
-struct NullableVector{T,V<:AbstractVector} <: ArrowVector{Union{T,Missing}}
+struct NullableVector{T,V<:AbstractVector{<:Union{T,Missing}}} <: ArrowVector{Union{T,Missing}}
     values::V
     bitmask::BitPrimitive
 end
@@ -36,4 +36,19 @@ offsets(v::NullableVector) = unmasked(v).offsets
 Base.size(v::NullableVector) = size(unmasked(v))
 #============================================================================================
     \end{NullableVector}
+============================================================================================#
+
+#============================================================================================
+    \begin{StringVector}
+    Needed because `BroadcastArray` doesn't deal well with `String` stealing data
+============================================================================================#
+struct StringVector{T<:Union{Missing,String},
+                    V<:AbstractVector{<:Union{Vector{UInt8},Missing}}} <: ArrowVector{T}
+    values::V
+end
+
+Base.size(l::StringVector) = size(l.values)
+Base.getindex(l::StringVector, i::Integer) = stringify(values(l)[i])
+#============================================================================================
+    \end{StringVector}
 ============================================================================================#

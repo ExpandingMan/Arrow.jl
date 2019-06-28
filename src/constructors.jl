@@ -169,13 +169,6 @@ function build(::Type{AbstractVector{Vector{T}}}, rb::Meta.RecordBatch,
     v, node_idx, buf_idx = build(AbstractVector{T}, rb, buf, node_idx, buf_idx, i)
     List{eltype(v),typeof(v)}(v, o), node_idx, buf_idx
 end
-function build(::Type{AbstractVector{String}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
-               node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1) where {T}
-    l, node_idx, buf_idx = build(AbstractVector{Vector{UInt8}}, rb, buf, node_idx, buf_idx, i)
-    # NOTE: the node_idx-1 below is needed because for some unfathomable reason they
-    # decided that strings just have to be different
-    BroadcastArray(stringify, l), node_idx-1, buf_idx
-end
 function build(::Type{AbstractVector{Union{Vector{T},Missing}}}, rb::Meta.RecordBatch,
                buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
                i::Integer=1) where {T}
@@ -185,18 +178,32 @@ function build(::Type{AbstractVector{Union{Vector{T},Missing}}}, rb::Meta.Record
     b = bitmask(rb, buf, node_idx, buf_idx, i)
     buf_idx += 1
     l, node_idx, buf_idx = build(AbstractVector{Vector{T}}, rb, buf, node_idx, buf_idx, i)
-    NullableVector{T,typeof(l)}(l, b), node_idx, buf_idx
+    NullableVector{bare_eltype(l),typeof(l)}(l, b), node_idx, buf_idx
+end
+
+function _string_list(rb::Meta.RecordBatch, buf::Vector{UInt8}, node_idx::Integer=1,
+                      buf_idx::Integer=1, i::Integer=1)
+    o = offsets(rb, buf, node_idx, buf_idx, i)
+    buf_idx += 1
+    v = primitive(UInt8, rb, buf, node_idx, buf_idx, i)
+    List{eltype(v),typeof(v)}(v, o)
+end
+# NOTE: they left us no choice but to have special methods for strings
+function build(::Type{AbstractVector{String}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
+               node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
+    l = _string_list(rb, buf, node_idx, buf_idx, i)
+    StringVector{String,typeof(l)}(l), node_idx+1, buf_idx+2
 end
 function build(::Type{AbstractVector{Union{String,Missing}}}, rb::Meta.RecordBatch,
                buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
     if _check_empty_buffer(rb, node_idx, buf_idx)
         return build(AbstractVector{String}, rb, buf, node_idx, buf_idx+1, i)
     end
-    l, node_idx, buf_idx = build(AbstractVector{Union{Vector{UInt8},Missing}}, rb, buf,
-                                 node_idx, buf_idx, i)
-    # NOTE: the node_idx-1 below is needed because for some unfathomable reason they
-    # decided that strings just have to be different
-    BroadcastArray(stringify, l), node_idx-1, buf_idx
+    b = bitmask(rb, buf, node_idx, buf_idx, i)
+    buf_idx += 1
+    l = _string_list(rb, buf, node_idx, buf_idx, i)
+    l = NullableVector{Vector{UInt8},typeof(l)}(l, b)
+    StringVector{Union{String,Missing},typeof(l)}(l), node_idx+1, buf_idx+2
 end
 #============================================================================================
     \end{from RecordBatch}

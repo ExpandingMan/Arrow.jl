@@ -2,6 +2,9 @@ module Arrow
 
 using LazyArrays, CategoricalArrays
 
+# TODO remove this when no longer being used
+using Debugger
+
 using Base: @propagate_inbounds
 
 
