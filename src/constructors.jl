@@ -182,7 +182,7 @@ end
 function build(::Type{AbstractVector{String}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
                node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
     l = _string_list(rb, buf, node_idx, buf_idx, i)
-    StringVector{String,typeof(l)}(l), node_idx+1, buf_idx+2
+    ConvertVector{String,typeof(l)}(l), node_idx+1, buf_idx+2
 end
 function build(::Type{AbstractVector{Union{String,Missing}}}, rb::Meta.RecordBatch,
                buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
@@ -193,7 +193,7 @@ function build(::Type{AbstractVector{Union{String,Missing}}}, rb::Meta.RecordBat
     buf_idx += 1
     l = _string_list(rb, buf, node_idx, buf_idx, i)
     l = NullableVector{Vector{UInt8},typeof(l)}(l, b)
-    StringVector{Union{String,Missing},typeof(l)}(l), node_idx+1, buf_idx+2
+    ConvertVector{Union{String,Missing},typeof(l)}(l), node_idx+1, buf_idx+2
 end
 #============================================================================================
     \end{from RecordBatch}
@@ -207,23 +207,23 @@ const CONTAINER_TYPES = (primitive=Union{Meta.Int_,Meta.FloatingPoint},
                          strings=Meta.Utf8,
                         )
 
-# TODO we may also need some way of specifying container types because of dictionaries;
-# either that or we need a separate check whether something is a dictionary
 # TODO incomplete
-function _juliatype(ϕ::Meta.Field)
+function _julia_eltype(ϕ::Meta.Field)
     if typeof(ϕ.dtype) <: CONTAINER_TYPES.primitive
         juliatype(ϕ.dtype)
     elseif typeof(ϕ.dtype) <: CONTAINER_TYPES.strings
         String
     elseif typeof(ϕ.dtype) <: CONTAINER_TYPES.lists
-        Vector{juliatype(ϕ.children[1])}
+        Vector{julia_eltype(ϕ.children[1])}
     else
         throw(ArgumentError("unrecognized type $(ϕ.dtype)"))
     end
 end
-_juliatype_nullable(ϕ::Meta.Field) = Union{_juliatype(ϕ),Missing}
+_julia_eltype_nullable(ϕ::Meta.Field) = Union{_julia_eltype(ϕ),Missing}
 
-Meta.juliatype(ϕ::Meta.Field) = ϕ.nullable ? _juliatype_nullable(ϕ) : _juliatype(ϕ)
+julia_eltype(ϕ::Meta.Field) = ϕ.nullable ? _julia_eltype_nullable(ϕ) : _julia_eltype(ϕ)
+
+Meta.juliatype(ϕ::Meta.Field) = AbstractVector{julia_eltype(ϕ)}
 
 """
     build
@@ -233,7 +233,7 @@ This function takes as its arguments Arrow metadata, which it then uses to call 
 """
 function build(ϕ::Meta.Field, rb::Meta.RecordBatch, buf::Vector{UInt8}, node_idx::Integer=1,
                buf_idx::Integer=1, i::Integer=1)
-    build(AbstractVector{juliatype(ϕ)}, rb, buf, node_idx, buf_idx, i)
+    build(juliatype(ϕ), rb, buf, node_idx, buf_idx, i)
 end
 #============================================================================================
     \end{build from schema field}
