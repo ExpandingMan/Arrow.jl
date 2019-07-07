@@ -64,3 +64,29 @@ Base.getindex(l::ConvertVector{T}, i::Integer) where {T} = arrowconvert(T, value
 #============================================================================================
     \end{ConvertVector}
 ============================================================================================#
+
+#============================================================================================
+    \begin{DictVector}
+============================================================================================#
+struct DictVector{T,K<:AbstractVector{<:Union{Missing,Integer}},
+                  V<:AbstractVector} <: ArrowVector{T}
+    keys::K
+    values::V
+end
+
+Base.keytype(l::DictVector) = eltype(l.keys)
+Base.valtype(l::DictVector) = eltype(l)
+
+Base.size(l::DictVector) = size(l.keys)
+function Base.getindex(l::DictVector{K}, i::Integer) where {K<:AbstractVector{<:Integer}}
+    l.values[l.keys[i]+one(keytype(l))]
+end
+function Base.getindex(l::DictVector{K}, i::Integer
+                      ) where {K<:AbstractVector{<:Union{Integer,Missing}}}
+    k = l.keys[i]
+    ismissing(k) && return missing
+    l.values[k+one(keytype(l))]
+end
+#============================================================================================
+    \end{DictVector}
+============================================================================================#

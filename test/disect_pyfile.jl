@@ -17,6 +17,7 @@ sch = m1.header
 # idx of start of next
 idx = 4 + l1 + m1.bodyLength
 
+b1_idx = idx+1
 l2 = reinterpret(Int32, buf[(idx+1):(idx+4)])[1]
 m2 = readmessage(buf, idx+5)
 rb1 = m2.header
@@ -28,6 +29,7 @@ buf2 = buf[(idx+1):end]
 
 idx += m2.bodyLength
 
+b2_idx = idx+1
 l3 = reinterpret(Int32, buf[(idx+1):(idx+4)])[1]
 m3 = readmessage(buf, idx+5)
 rb2 = m3.header
