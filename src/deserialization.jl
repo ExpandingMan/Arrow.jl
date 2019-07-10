@@ -145,4 +145,5 @@ function BatchIterator(::Type{Meta.RecordBatch}, ds::DataSet, i::Integer)
 end
 
 
+# TODO do reading batches from IO!!!
 # TODO next start on functions that build entire dataset all at once
