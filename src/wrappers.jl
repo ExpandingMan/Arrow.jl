@@ -74,15 +74,23 @@ struct DictVector{T,K<:AbstractVector{<:Union{Missing,Integer}},
     values::V
 end
 
+function DictVector(keys::AbstractVector{T}, vals::AbstractVector{U}) where {T,U}
+    DictVector{U,typeof(keys),typeof(vals)}(keys, vals)
+end
+function DictVector(keys::AbstractVector{Union{T,Missing}}, vals::AbstractVector{U}
+                   ) where {T,U}
+    DictVector{Union{U,Missing},typeof(keys),typeof(vals)}(keys, vals)
+end
+
 Base.keytype(l::DictVector) = eltype(l.keys)
 Base.valtype(l::DictVector) = eltype(l)
 
 Base.size(l::DictVector) = size(l.keys)
-function Base.getindex(l::DictVector{K}, i::Integer) where {K<:AbstractVector{<:Integer}}
+function Base.getindex(l::DictVector{T,K}, i::Integer) where {T,K<:AbstractVector{<:Integer}}
     l.values[l.keys[i]+one(keytype(l))]
 end
-function Base.getindex(l::DictVector{K}, i::Integer
-                      ) where {K<:AbstractVector{<:Union{Integer,Missing}}}
+function Base.getindex(l::DictVector{T,K}, i::Integer
+                      ) where {T,K<:AbstractVector{<:Union{Integer,Missing}}}
     k = l.keys[i]
     ismissing(k) && return missing
     l.values[k+one(keytype(l))]
