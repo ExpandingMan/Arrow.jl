@@ -11,11 +11,6 @@ body_start(b::Batch) = b.body_start
 body_length(b::Batch) = b.body_length
 body_end(b::Batch) = body_start(b) + body_length(b) - 1
 
-function Batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer)
-    Batch{typeof(m.header)}(m.header, buf, i, m.bodyLength)
-end
-
-# returns nothing if batch can't be read
 """
     Batch
 
@@ -24,22 +19,60 @@ Object which holds an arrow message along with the data buffer and pointers to t
 ## Constructors
 ```julia
 Batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer)
-Batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1)
 ```
+"""
+function Batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer)
+    Batch{typeof(m.header)}(m.header, buf, i, m.bodyLength)
+end
+
+"""
+    readmessage_length(io)
+
+Arrow messages are prepended with the message header length as an `Int32`.  This function returns a
+tuple `l, m` where `l` is that length and `m` is the message after reading them from the `IO`.
+
+If the end of the file is reached `(0, nothing)` will be returned.
+"""
+function readmessage_length(io::IO)
+    eof(io) && return (0, nothing)
+    l = read(io, Int32)
+    eof(io) && return (0, nothing)  # should we give warning for this
+    m = readmessage(io)
+    l, m
+end
+
+# returns nothing if batch can't be read (consider if this should be renamed `batch` because of that)
+"""
+    batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1, databuf::Vector{UInt8}=buf)
+
+Read in a batch from a buffer or IO stream.
 
 ## Arguments
 - `m`: An arrow message metadata object describing the batch.
 - `buf`: A buffer to read from.
+- `databuf`: Buffer containing actual data (body).
 - `rf`: Index of the buffer `buf` to read the message `m` from.
 - `i`: The start index (in `buf`) of the message body. If `i < 1`, this will be determined from `rf`.
 """
-function Batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1)
+function batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1, databuf::Vector{UInt8}=buf)
     rf + 3 > length(buf) && return nothing
     l = reinterpret(Int32, buf[rf:(rf+3)])[1]
     l == 0 && return nothing
     m = readmessage(buf, rf+4)
     i < 1 && (i = rf+4+l)
+    Batch(m, databuf, i)
+end
+function batch(io::IO, buf::Vector{UInt8}, i::Integer=1)
+    l, m = readmessage_length(io)
+    l == 0 && return nothing
     Batch(m, buf, i)
+end
+function batch(io::IO, dataio::IO=io, data_skip::Integer=0)
+    l, m = readmessage_length(io)
+    l == 0 && return nothing
+    skip(dataio, data_skip)
+    buf = read(dataio, m.bodyLength)
+    Batch(m, buf, 1)
 end
 
 dictionary_id(b::Meta.DictionaryBatch) = b.id
@@ -129,17 +162,17 @@ struct DataSet
 end
 
 function readbatches(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
-                     i::AbstractVector{<:Integer}=fill(-1, length(rf)))
+                     i::AbstractVector{<:Integer}=fill(-1, length(rf)), databuf::Vector{UInt8}=buf)
     batches = Vector{Batch}(undef, length(rf))
     for j ∈ 1:length(rf)
-        batches[j] = Batch(buf, rf[j], i[j])
+        batches[j] = batch(buf, rf[j], i[j], databuf)
     end
     batches
 end
 function readbatches(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int))
     batches = Vector{Batch}(undef, 0)
     while length(batches) < max_batches
-        b = Batch(buf, rf)
+        b = batch(buf, rf)
         b == nothing && break
         push!(batches, b)
         rf = body_end(b) + 1
@@ -160,8 +193,8 @@ function DataSet(batches::AbstractVector{<:Batch})
 end
 
 function DataSet(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
-                 i::AbstractVector{<:Integer}=fill(-1, length(rf)))
-    DataSet(readbatches(buf, rf, i))
+                 i::AbstractVector{<:Integer}=fill(-1, length(rf)), databuf::Vector{UInt8}=buf)
+    DataSet(readbatches(buf, rf, i, databuf))
 end
 function DataSet(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int))
     DataSet(readbatches(buf, rf, max_batches))
