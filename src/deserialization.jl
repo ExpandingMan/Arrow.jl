@@ -11,17 +11,35 @@ body_start(b::Batch) = b.body_start
 body_length(b::Batch) = b.body_length
 body_end(b::Batch) = body_start(b) + body_length(b) - 1
 
-function Batch(m::Meta.Message, buf::Vector{UInt8}, l::Integer, i::Integer=1)
-    Batch{typeof(m.header)}(m.header, buf, i+4+l, m.bodyLength)
+function Batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer)
+    Batch{typeof(m.header)}(m.header, buf, i, m.bodyLength)
 end
 
 # returns nothing if batch can't be read
-function Batch(buf::Vector{UInt8}, i::Integer=1)
-    i + 3 > length(buf) && return nothing
-    l = reinterpret(Int32, buf[i:(i+3)])[1]
+"""
+    Batch
+
+Object which holds an arrow message along with the data buffer and pointers to the data.
+
+## Constructors
+```julia
+Batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer)
+Batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1)
+```
+
+## Arguments
+- `m`: An arrow message metadata object describing the batch.
+- `buf`: A buffer to read from.
+- `rf`: Index of the buffer `buf` to read the message `m` from.
+- `i`: The start index (in `buf`) of the message body. If `i < 1`, this will be determined from `rf`.
+"""
+function Batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1)
+    rf + 3 > length(buf) && return nothing
+    l = reinterpret(Int32, buf[rf:(rf+3)])[1]
     l == 0 && return nothing
-    m = readmessage(buf, i+4)
-    Batch(m, buf, l, i)
+    m = readmessage(buf, rf+4)
+    i < 1 && (i = rf+4+l)
+    Batch(m, buf, i)
 end
 
 dictionary_id(b::Meta.DictionaryBatch) = b.id
@@ -51,7 +69,7 @@ function dict_field_idx(b1::Batch{Meta.Schema}, b2::Batch{Meta.DictionaryBatch})
 end
 
 function build(ϕ::Meta.Field, b::Batch, node_idx::Integer=1, buf_idx::Integer=1)
-    build(ϕ, b.header, b.buffer, node_idx, buf_idx, b.body_start)
+    build(ϕ, b.header, b.buffer, node_idx, buf_idx, body_start(b))
 end
 function build(sch::Meta.Schema, b::Batch, ϕ_idx::Integer, node_idx::Integer=1,
                buf_idx::Integer=1)
@@ -110,13 +128,21 @@ struct DataSet
     # TODO what about all the other types? (particularly tensors!!!)
 end
 
-function readbatches(buf::Vector{UInt8}, i::Integer=1, max_batches::Integer=typemax(Int))
+function readbatches(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
+                     i::AbstractVector{<:Integer}=fill(-1, length(rf)))
+    batches = Vector{Batch}(undef, length(rf))
+    for j ∈ 1:length(rf)
+        batches[j] = Batch(buf, rf[j], i[j])
+    end
+    batches
+end
+function readbatches(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int))
     batches = Vector{Batch}(undef, 0)
     while length(batches) < max_batches
-        b = Batch(buf, i)
+        b = Batch(buf, rf)
         b == nothing && break
         push!(batches, b)
-        i = body_end(b) + 1
+        rf = body_end(b) + 1
     end
     batches
 end
@@ -133,8 +159,12 @@ function DataSet(batches::AbstractVector{<:Batch})
     DataSet(sch, dicts, recs)
 end
 
-function DataSet(buf::Vector{UInt8}, i::Integer=1, max_batches::Integer=typemax(Int))
-    DataSet(readbatches(buf, i, max_batches))
+function DataSet(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
+                 i::AbstractVector{<:Integer}=fill(-1, length(rf)))
+    DataSet(readbatches(buf, rf, i))
+end
+function DataSet(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int))
+    DataSet(readbatches(buf, rf, max_batches))
 end
 
 function BatchIterator(::Type{Meta.DictionaryBatch}, ds::DataSet, i::Integer)
