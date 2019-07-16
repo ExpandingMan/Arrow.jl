@@ -67,11 +67,11 @@ arrowtype(::Type{UInt64}) = Int_(64, false)
 arrowtype(::Type{UInt128}) = Int_(128, false)
 
 
-# TODO this probably isn't permanent, but it's useful for now
 function readmessage(buf::AbstractVector{UInt8}, i::Integer, j::Integer=length(buf))
     FB.read(Message, @view buf[i:j])
 end
-readmessage(io::IO) = FB.deserialize(io, Message)  # TODO this is always bringing ot to end of file, wtf???
+readmessage(io::IO, ℓ::Integer) = FB.read(Message, read(io, ℓ))
+readmessage(io::IO) = readmessage(io, read(io, Int32))
 
 
 export juliatype, arrowtype, readmessage

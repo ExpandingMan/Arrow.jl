@@ -37,7 +37,7 @@ function readmessage_length(io::IO)
     eof(io) && return (0, nothing)
     l = read(io, Int32)
     eof(io) && return (0, nothing)  # should we give warning for this
-    m = readmessage(io)
+    m = readmessage(io, l)
     l, m
 end
 
@@ -113,7 +113,8 @@ function build(bsch::Batch{Meta.Schema}, b::Batch, ϕ_idx::Integer, node_idx::In
     build(bsch.header, b, ϕ_idx, node_idx, buf_idx)
 end
 
-fieldname(sch::Meta.Schema, i::Integer) = Symbol(sch.fields[i].name)
+fieldname(ϕ::Meta.Field) = Symbol(ϕ.name)
+fieldname(sch::Meta.Schema, i::Integer) = fieldname(sch.fields[i])
 fieldname(b::Batch{Meta.Schema}, i::Integer) = fieldname(b.header, i)
 fieldnames(sch::Meta.Schema) = [fieldname(sch, i) for i ∈ 1:length(sch.fields)]
 fieldnames(b::Batch{Meta.Schema}) = fieldnames(b.header)
@@ -158,8 +159,17 @@ struct DataSet
     dictionary_batches::Vector{Batch{Meta.DictionaryBatch}}
     record_batches::Vector{Batch{Meta.RecordBatch}}
 
+    dictionary_data::Vector{Any}
+    record_data::Vector{Any}
+
     # TODO what about all the other types? (particularly tensors!!!)
 end
+
+getcolumnmeta(ds::DataSet) = ds.schema.header.fields
+getcolumnmeta(ds::DataSet, i::Integer) = getcolumnmeta(ds)[i]
+getcolumnmeta(ds::DataSet, name::Symbol) = findfirst(ϕ -> fieldname(ϕ) == name,
+                                                     getcolumnmeta(ds))
+ncolumns(ds::DataSet) = length(ds.schema.header.fields)
 
 function readbatches(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
                      i::AbstractVector{<:Integer}=fill(-1, length(rf)), databuf::Vector{UInt8}=buf)
@@ -179,8 +189,21 @@ function readbatches(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typ
     end
     batches
 end
+function readbatches(io::IO, dataio::IO=io, data_skip::Integer=0,
+                     max_batches::Integer=typemax(Int))
+    batches = Vector{Batch}(undef, 0)
+    while length(batches) < max_batches
+        b = batch(io, dataio, data_skip)
+        b == nothing && break
+        push!(batches, b)
+    end
+    batches
+end
 
-function DataSet(batches::AbstractVector{<:Batch})
+function DataSet(batches::AbstractVector{<:Batch}; build_data::Bool=true)
+    if isempty(batches)
+        throw(ArgumentError("no batches provided, unable to build dataset"))
+    end
     sch = filter(b -> b isa Batch{Meta.Schema}, batches)
     if length(sch) > 1
         throw(ArgumentError("Multiple schemas found in batches, `Arrow.DataSet` must be "*
@@ -189,15 +212,23 @@ function DataSet(batches::AbstractVector{<:Batch})
     sch = first(sch)
     dicts = filter(b -> b isa Batch{Meta.DictionaryBatch}, batches)
     recs = filter(b -> b isa Batch{Meta.RecordBatch}, batches)
-    DataSet(sch, dicts, recs)
+    ds = DataSet(sch, dicts, recs, [], [])
+    build_data && build!(ds)
+    ds
 end
 
 function DataSet(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
-                 i::AbstractVector{<:Integer}=fill(-1, length(rf)), databuf::Vector{UInt8}=buf)
-    DataSet(readbatches(buf, rf, i, databuf))
+                 i::AbstractVector{<:Integer}=fill(-1, length(rf)),
+                 databuf::Vector{UInt8}=buf; build_data::Bool=true)
+    DataSet(readbatches(buf, rf, i, databuf), build_data=build_data)
 end
-function DataSet(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int))
-    DataSet(readbatches(buf, rf, max_batches))
+function DataSet(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int);
+                 build_data::Bool=true)
+    DataSet(readbatches(buf, rf, max_batches), build_data=build_data)
+end
+function DataSet(io::IO, dataio::IO=io, data_skip::Integer=0,
+                 max_batches::Integer=typemax(Int); build_data::Bool=true)
+    DataSet(readbatches(io, dataio, data_skip, max_batches), build_data=build_data)
 end
 
 function BatchIterator(::Type{Meta.DictionaryBatch}, ds::DataSet, i::Integer)
@@ -207,6 +238,46 @@ function BatchIterator(::Type{Meta.RecordBatch}, ds::DataSet, i::Integer)
     BatchIterator(ds.schema, ds.record_batches[i])
 end
 
+function build_dictionaries!(ds::DataSet)
+    length(ds.dictionary_data) > 0 && return ds.dictionary_data
+    for i ∈ 1:length(ds.dictionary_batches)
+        bi = BatchIterator(Meta.DictionaryBatch, ds, i)
+        push!(ds.dictionary_data, build(NamedTuple, bi))
+    end
+    ds.dictionary_data
+end
+function build_records!(ds::DataSet)
+    length(ds.record_data) > 0 && return ds.record_data
+    for i ∈ 1:length(ds.record_batches)
+        bi = BatchIterator(Meta.RecordBatch, ds, i)
+        push!(ds.record_data, build(NamedTuple, bi))
+    end
+    ds.record_data
+end
 
-# TODO do reading batches from IO!!!
-# TODO next start on functions that build entire dataset all at once
+
+build!(ds::DataSet) = (build_dictionaries!(ds); build_records!(ds))
+
+
+function assemble(ds::DataSet, ϕ::Meta.Field)
+    if !(ϕ.dictionary == nothing)
+        # TODO do stuff
+    else
+        length(ds.record_data) == 0 && return Vector{julia_valtype(ϕ)}()
+        if length(ds.record_data) == 1
+            getproperty(ds.record_data[1], filedname(ϕ))
+        else
+            Vcat((getproperty(ds.record_data[i], fieldname(ϕ))
+                  for i ∈ 1:length(ds.record_data))...)
+        end
+    end
+end
+assemble(ds::DataSet, i::Integer) = assemble(ds, getcolumnmeta(ds, i))
+assemble(ds::DataSet, name::Symbol) = assemble(ds, getcolumnmeta(ds, name))
+function assemble(::Type{Tuple}, ds::DataSet)
+    tuple((assemble(ds, ϕ) for ϕ ∈ getcolumnmeta(ds))...)
+end
+function assemble(::Type{NamedTuple}, ds::DataSet)
+    (;(fieldname(ϕ)=>assemble(ds, ϕ) for ϕ ∈ getcolumnmeta(ds))...)
+end
+assemble(ds::DataSet) = assemble(NamedTuple, ds)
