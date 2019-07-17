@@ -75,6 +75,11 @@ function batch(io::IO, dataio::IO=io, data_skip::Integer=0)
     Batch(m, buf, 1)
 end
 
+"""
+    dictionary_id
+
+Gets the dictionary ID associated with the field or batch.
+"""
 dictionary_id(b::Meta.DictionaryBatch) = b.id
 dictionary_id(ϕ::Meta.DictionaryEncoding) = ϕ.id
 function dictionary_id(ϕ::Meta.Field)
@@ -113,6 +118,12 @@ function build(bsch::Batch{Meta.Schema}, b::Batch, ϕ_idx::Integer, node_idx::In
     build(bsch.header, b, ϕ_idx, node_idx, buf_idx)
 end
 
+"""
+    fieldname(ϕ::Meta.Field)
+    fieldname(schema, field_idx)
+
+Get the name of the column described by the field metadata.
+"""
 fieldname(ϕ::Meta.Field) = Symbol(ϕ.name)
 fieldname(sch::Meta.Schema, i::Integer) = fieldname(sch.fields[i])
 fieldname(b::Batch{Meta.Schema}, i::Integer) = fieldname(b.header, i)
@@ -124,6 +135,12 @@ struct BatchIterator{H}
     batch::Batch{H}
 end
 
+"""
+    fieldnames(bi::BatchIterator)
+    fieldnames(schema)
+
+Get the names of all columns.
+"""
 fieldnames(bi::BatchIterator) = fieldnames(bi.schema)
 function fieldname(bi::BatchIterator{Meta.DictionaryBatch}, i::Integer=1)
     fieldname(bi.schema, dict_field_idx(bi.schema, bi.batch))
@@ -165,12 +182,23 @@ struct DataSet
     # TODO what about all the other types? (particularly tensors!!!)
 end
 
+"""
+    getcolumnmeta
+
+Get the column names of the `DataSet`.
+"""
 getcolumnmeta(ds::DataSet) = ds.schema.header.fields
 getcolumnmeta(ds::DataSet, i::Integer) = getcolumnmeta(ds)[i]
 getcolumnmeta(ds::DataSet, name::Symbol) = findfirst(ϕ -> fieldname(ϕ) == name,
                                                      getcolumnmeta(ds))
 ncolumns(ds::DataSet) = length(ds.schema.header.fields)
 
+"""
+    readbatches
+
+Read all batches from a buffer or IO stream.  The reading will be attempted sequentially and
+will terminate when the end of the stream or buffer or a `0` length specifier is encountered.
+"""
 function readbatches(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
                      i::AbstractVector{<:Integer}=fill(-1, length(rf)), databuf::Vector{UInt8}=buf)
     batches = Vector{Batch}(undef, length(rf))
@@ -259,17 +287,45 @@ end
 build!(ds::DataSet) = (build_dictionaries!(ds); build_records!(ds))
 
 
-function assemble(ds::DataSet, ϕ::Meta.Field)
-    if !(ϕ.dictionary == nothing)
-        # TODO do stuff
+"""
+    assemble_keys(ds::DataSet, ϕ::Meta.Field)
+
+Build the full Arrow view object associated with field `ϕ` in dataset `ds`.
+
+For dictionaries, this will build the keys only.
+"""
+function assemble_keys(ds::DataSet, ϕ::Meta.Field)
+    dtype = ϕ.dictionary == nothing ? julia_eltype(ϕ) : _julia_eltype(ϕ.dictionary)
+    length(ds.record_data) == 0 && return Vector{dtype}()
+    if length(ds.record_data) == 1
+        getproperty(ds.record_data[1], filedname(ϕ))
     else
-        length(ds.record_data) == 0 && return Vector{julia_valtype(ϕ)}()
-        if length(ds.record_data) == 1
-            getproperty(ds.record_data[1], filedname(ϕ))
-        else
-            Vcat((getproperty(ds.record_data[i], fieldname(ϕ))
-                  for i ∈ 1:length(ds.record_data))...)
-        end
+        Vcat((getproperty(ds.record_data[i], fieldname(ϕ))
+              for i ∈ 1:length(ds.record_data))...)
+    end
+end
+
+"""
+    assemble_values(ds::DataSet, ϕ::Meta.Field)
+
+Build the full Arrow view object associated with a dictionary field.
+"""
+function assemble_values(ds::DataSet, ϕ::Meta.Field)
+    length(ds.dictionary_data) == 0 && return Vector{julia_eltype(ϕ)}()
+    if ϕ.dictionary == nothing
+        return assemble_keys(ds, ϕ)
+    end
+    idx = findfirst(b -> dictionary_id(b) == ϕ.dictionary.id, ds.dictionary_batches)
+    if idx == nothing
+        throw(ErrorException("could not find values for dictionary ID $(ϕ.dictionary.id)"))
+    end
+    getproperty(ds.dictionary_data[idx], fieldname(ϕ))
+end
+function assemble(ds::DataSet, ϕ::Meta.Field)
+    if ϕ.dictionary == nothing
+        assemble_keys(ds, ϕ)
+    else
+        DictVector(assemble_keys(ds, ϕ), assemble_values(ds, ϕ))
     end
 end
 assemble(ds::DataSet, i::Integer) = assemble(ds, getcolumnmeta(ds, i))
@@ -280,4 +336,11 @@ end
 function assemble(::Type{NamedTuple}, ds::DataSet)
     (;(fieldname(ϕ)=>assemble(ds, ϕ) for ϕ ∈ getcolumnmeta(ds))...)
 end
+
+"""
+    assemble(ds)
+
+Assemble a named tuple the keys of which are the column names and the values of which are the
+arrays of the `DataSet` `ds`.
+"""
 assemble(ds::DataSet) = assemble(NamedTuple, ds)
