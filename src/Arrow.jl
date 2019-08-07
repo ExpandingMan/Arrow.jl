@@ -1,5 +1,6 @@
 module Arrow
 
+using Mmap
 using LazyArrays, CategoricalArrays
 
 # TODO remove this when no longer being used
@@ -9,6 +10,8 @@ using Base: @propagate_inbounds
 
 
 const ALIGNMENT = 8
+
+const FILE_FORMAT_MAGIC_BYTES = b"ARROW1"
 
 
 struct NotImplementedError <: Exception

@@ -41,11 +41,11 @@ function readmessage_length(io::IO)
     l, m
 end
 
-# returns nothing if batch can't be read (consider if this should be renamed `batch` because of that)
 """
     batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1, databuf::Vector{UInt8}=buf)
 
-Read in a batch from a buffer or IO stream.
+Read in a batch from a buffer or IO stream.  Returns `nothing` if the batch can't be read
+for whatever reason.
 
 ## Arguments
 - `m`: An arrow message metadata object describing the batch.
@@ -200,7 +200,8 @@ Read all batches from a buffer or IO stream.  The reading will be attempted sequ
 will terminate when the end of the stream or buffer or a `0` length specifier is encountered.
 """
 function readbatches(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
-                     i::AbstractVector{<:Integer}=fill(-1, length(rf)), databuf::Vector{UInt8}=buf)
+                     i::AbstractVector{<:Integer}=fill(-1, length(rf)),
+                     databuf::Vector{UInt8}=buf)
     batches = Vector{Batch}(undef, length(rf))
     for j ∈ 1:length(rf)
         batches[j] = batch(buf, rf[j], i[j], databuf)
@@ -344,3 +345,45 @@ Assemble a named tuple the keys of which are the column names and the values of 
 arrays of the `DataSet` `ds`.
 """
 assemble(ds::DataSet) = assemble(NamedTuple, ds)
+
+#============================================================================================
+    \begin{file format}
+
+    Support for Arrow file format, which is just the streaming format in a file.
+
+    # TODO do we need to read footer?
+============================================================================================#
+function filedata(fname::AbstractString; use_mmap::Bool=true)
+    filedata(use_mmap ? Mmap.mmap(fname) : read(fname))
+end
+
+function _validate_magic_bytes(b::Vector{UInt8})
+    b[1:6] == b"ARROW1" ||
+        throw(ArgumentError("Invalid arrow file: magic bytes $(String(b[1:min(8,length(b))]))"*
+                            ", expected \"ARROW1\""))
+end
+
+function filedata(buf::Vector{UInt8})
+    _validate_magic_bytes(buf)
+    DataSet(buf, ALIGNMENT+1)
+end
+function filedata(io::IO)
+    _validate_magic_bytes(read(io, ALIGNMENT))
+    DataSet(io)
+end
+
+function readfile(::Type{T}, fname::AbstractString; use_mmap::Bool=true) where {T}
+    assemble(T, filedata(fname, use_mmap=use_mmap))
+end
+readfile(::Type{T}, data::Union{IO,Vector{UInt8}}) where {T} = assemble(T, filedata(data))
+function readfile(fname::AbstractString; use_mmap::Bool=true)
+    assemble(filedata(fname, use_mmap=use_mmap))
+end
+readfile(data::Union{IO,Vector{UInt8}}) = assemble(filedata(data))
+
+# TODO this is failing right now because it tries to read the footer as a batch
+# not sure what best solution is...
+# might require one to know buffer bounds everywhere
+#============================================================================================
+    \end{file format}
+============================================================================================#

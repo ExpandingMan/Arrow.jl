@@ -19,7 +19,7 @@ batch = pa.RecordBatch.from_arrays(data, ["col1", "col2", "col3", "col4", "col5"
 
 sink = pa.BufferOutputStream()
 
-writer = pa.RecordBatchFileWriter(sink, batch.schema)
+writer = pa.RecordBatchStreamWriter(sink, batch.schema)
 
 for i in range(2):
     writer.write_batch(batch)
@@ -32,7 +32,7 @@ b = buf.to_pybytes()  # this is the buffer containing the full streaming format
 
 # schema_buffer = batch.schema.serialize().to_pybytes()
 
-f = open("testdata1.arrow", "wb")
+f = open("testdata1.dat", "wb")
 f.write(b)
 f.close()
 
