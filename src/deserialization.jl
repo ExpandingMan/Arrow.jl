@@ -35,6 +35,8 @@ If the end of the file is reached `(0, nothing)` will be returned.
 """
 function readmessage_length(io::IO)
     eof(io) && return (0, nothing)
+    c = read(io, Int32)
+    c ≠ -1 && return (0, nothing)  # we've gotten to something that isn't a message
     l = read(io, Int32)
     eof(io) && return (0, nothing)  # should we give warning for this
     m = readmessage(io, l)
@@ -44,8 +46,8 @@ end
 """
     batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1, databuf::Vector{UInt8}=buf)
 
-Read in a batch from a buffer or IO stream.  Returns `nothing` if the batch can't be read
-for whatever reason.
+Read in a batch from a buffer or IO stream.  Returns `nothing` if the data attempting to be
+read is not a valid batch.
 
 ## Arguments
 - `m`: An arrow message metadata object describing the batch.
@@ -56,10 +58,13 @@ for whatever reason.
 """
 function batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1, databuf::Vector{UInt8}=buf)
     rf + 3 > length(buf) && return nothing
-    l = reinterpret(Int32, buf[rf:(rf+3)])[1]
+    c = reinterpret(Int32, buf[rf:(rf+3)])[1]
+    c ≠ -1 && return nothing  # we've gotten to something that isn't a batch
+    l = reinterpret(Int32, buf[(rf+4):(rf+7)])[1]
     l == 0 && return nothing
-    m = readmessage(buf, rf+4)
-    i < 1 && (i = rf+4+l)
+    m = readmessage(buf, rf+8)
+    m == nothing && return nothing
+    i < 1 && (i = rf+8+l)
     Batch(m, databuf, i)
 end
 function batch(io::IO, buf::Vector{UInt8}, i::Integer=1)
@@ -381,9 +386,6 @@ function readfile(fname::AbstractString; use_mmap::Bool=true)
 end
 readfile(data::Union{IO,Vector{UInt8}}) = assemble(filedata(data))
 
-# TODO this is failing right now because it tries to read the footer as a batch
-# not sure what best solution is...
-# might require one to know buffer bounds everywhere
 #============================================================================================
     \end{file format}
 ============================================================================================#

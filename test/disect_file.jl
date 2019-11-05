@@ -12,19 +12,20 @@ io = IOBuffer(copy(buf))
 
 idx = 8  # file starts with b"ARROW1\0\0"
 
-l1 = reinterpret(Int32, buf[(idx+1):(idx+4)])[1]
-m1 = readmessage(buf, idx+5)
+# don't forget about continuation indicator of 0xffffff
+l1 = reinterpret(Int32, buf[(idx+5):(idx+8)])[1]
+m1 = readmessage(buf, idx+9)
 sch = m1.header
 
 # idx of start of next
-idx = 8 + 4 + l1 + m1.bodyLength
+idx = 8 + 8 + l1 + m1.bodyLength
 
 b1_idx = idx+1
-l2 = reinterpret(Int32, buf[(idx+1):(idx+4)])[1]
-m2 = readmessage(buf, idx+5)
+l2 = reinterpret(Int32, buf[(idx+5):(idx+8)])[1]
+m2 = readmessage(buf, idx+9)
 rb1 = m2.header
 
-idx += 4 + l2
+idx += 8 + l2
 
 # first data buffer, read arrays from this
 buf2 = buf[(idx+1):end]
@@ -32,8 +33,8 @@ buf2 = buf[(idx+1):end]
 idx += m2.bodyLength
 
 b2_idx = idx+1
-l3 = reinterpret(Int32, buf[(idx+1):(idx+4)])[1]
-m3 = readmessage(buf, idx+5)
+l3 = reinterpret(Int32, buf[(idx+5):(idx+8)])[1]
+m3 = readmessage(buf, idx+9)
 rb2 = m3.header
 
 
