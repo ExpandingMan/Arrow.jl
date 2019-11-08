@@ -6,6 +6,7 @@ version = "0.4.0"
 [deps]
 CategoricalArrays = "324d7699-5711-5eae-9e2f-1d82baa6b597"
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Debugger = "31a5f54b-26ea-5ae9-a837-f05ce5417438"  # TODO remove this when development is further along
 FlatBuffers = "53afe959-3a16-52fa-a8da-cf864710bae9"
 LazyArrays = "5078a376-72f3-5289-bfd5-ec5146d43c02"
 Mmap = "a63ad114-7e13-5084-954f-fe012c677804"

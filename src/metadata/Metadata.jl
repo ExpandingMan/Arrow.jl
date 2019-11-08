@@ -8,6 +8,20 @@ include("tensor.jl")
 include("sparsetensor.jl")
 include("message.jl")
 
+#=======================================================================================================
+    \begin{additional constructors}
+=======================================================================================================#
+function Field(name::AbstractString, nullable::Bool, dtype::DType,
+               dictionary::Union{DictionaryEncoding,Nothing}=nothing, children::AbstractVector=[],
+               custom_metadata::AbstractVector=[])
+    Field(name, nullable, FB.typeorder(DType, typeof(dtype)), dtype, dictionary, children,
+          custom_metadata)
+end
+#=======================================================================================================
+    \end{additional constructors}
+=======================================================================================================#
+
+
 # TODO have this give decent error messages
 struct InvalidMetadataError <: Exception end
 
@@ -65,6 +79,18 @@ arrowtype(::Type{UInt16}) = Int_(16, false)
 arrowtype(::Type{UInt32}) = Int_(32, false)
 arrowtype(::Type{UInt64}) = Int_(64, false)
 arrowtype(::Type{UInt128}) = Int_(128, false)
+
+arrowtype(::Type{Bool}) = Bool_()
+
+arrowtype(::Type{Float16}) = FloatingPoint(PrecisionHALF)
+arrowtype(::Type{Float32}) = FloatingPoint(PrecisionSINGLE)
+arrowtype(::Type{Float64}) = FloatingPoint(PrecisionDOUBLE)
+
+arrowtype(::Type{<:AbstractString}) = Utf8()
+
+arrowtype(::Type{Date}) = Date_(DateUnitDAY)
+arrowtype(::Type{Time}) = Time_(TimeUnitNANOSECOND)
+arrowtype(::Type{DateTime}) = Timestamp(TimeUnitMILLISECOND, "")
 
 
 function readmessage(buf::AbstractVector{UInt8}, i::Integer, j::Integer=length(buf))

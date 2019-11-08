@@ -19,8 +19,25 @@ since Arrow requires 8-byte boundary alignment.
 function writepadded(io::IO, x)
     bw = write(io, x)
     diff = padding(bw) - bw
-    write(io, zeros(UInt8, diff))
-    bw + diff
+    for i ∈ 1:diff
+        bw += write(io, 0x00)
+    end
+    bw
+end
+
+
+"""
+    writepadded!(buf, i, x)
+
+Reinterprets the `Vector` `x` as `UInt8` and writes it to `buf` starting at `i`.
+Returns the number of bytes written.
+"""
+function writepadded!(buf::AbstractVector{UInt8}, i::Integer, x)
+    ξ = reinterpret(UInt8, x)  # one allocation here, eliminating it would be a lot of work
+    n = padding(length(ξ))
+    copyto!(buf, i, ξ)
+    copyto!(buf, i+length(ξ), (0x00 for i ∈ 1:(n-length(ξ))))
+    n
 end
 
 
