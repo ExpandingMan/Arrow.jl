@@ -13,6 +13,9 @@ mutable struct Struct end
 mutable struct List end
 @ALIGN List 1
 
+mutable struct LargeList end
+@ALIGN LargeList 1
+
 @with_kw mutable struct FixedSizeList
     listSize::Int32 = 0  # Number of list items per value
 end
@@ -54,6 +57,12 @@ mutable struct Utf8 end
 
 mutable struct Binary end
 @ALIGN Binary 1
+
+mutable struct LargeUtf8 end
+@ALIGN LargeUtf8 1
+
+mutable struct LargeBinary end
+@ALIGN LargeBinary 1
 
 @with_kw mutable struct FixedSizeBinary
     byteWidth::Int32 = 0  # number of bytes per value
@@ -109,9 +118,35 @@ end
 @ALIGN Interval 1
 FB.slot_offsets(::Type{Interval}) = UInt32[4]
 
-@UNION DType (Nothing,Null,Int_,FloatingPoint,Binary,Utf8,Bool_,Decimal,Date_,Time_,
-              Timestamp,Interval,List,Struct,Union_,FixedSizeBinary,FixedSizeList,
-              Map)
+@with_kw mutable struct Duration
+    unit::TimeUnit = 1
+end
+@ALIGN Duration 1
+FB.slot_offsets(::Type{Duration}) = UInt32[4]
+
+@UNION DType (Nothing,
+              Null,
+              Int_,
+              FloatingPoint,
+              Binary,
+              Utf8,
+              Bool_,
+              Decimal,
+              Date_,
+              Time_,
+              Timestamp,
+              Interval,
+              List,
+              Struct,
+              Union_,
+              FixedSizeBinary,
+              FixedSizeList,
+              Map,
+              Duration,
+              LargeBinary,
+              LargeUtf8,
+              LargeList,
+             )
 
 @with_kw mutable struct KeyValue
     key::String = ""
@@ -120,13 +155,16 @@ end
 @ALIGN KeyValue 1
 FB.slot_offsets(::Type{KeyValue}) = UInt32[4,6]
 
+@enum(DictionaryKind::Int16, DenseArray_=0)
+
 @with_kw mutable struct DictionaryEncoding
     id::Int64 = 0
     indexType::Union{Int_,Nothing} = nothing
     isOrdered::Bool = false
+    dictionaryKind::DictionaryKind = 0
 end
 @ALIGN DictionaryEncoding 1
-FB.slot_offsets(::Type{DictionaryEncoding}) = UInt32[4,6,8]
+FB.slot_offsets(::Type{DictionaryEncoding}) = UInt32[4,6,8,10]
 
 @with_kw mutable struct Field
     name::String = ""
@@ -155,5 +193,5 @@ end
 end
 @ALIGN Schema 1
 FB.slot_offsets(::Type{Schema}) = UInt32[4,6,8]
-FlatBuffers.root_type(::Type{<:Schema}) = true
+FB.root_type(::Type{Schema}) = true
 

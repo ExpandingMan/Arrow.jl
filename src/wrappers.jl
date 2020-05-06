@@ -15,9 +15,6 @@ unmasked(l::List) = l
 
 Base.size(l::List) = (length(offsets(l))-1,)
 Base.getindex(l::List, i::Integer) = values(l)[offset1_range(l, i)]
-function Base.setindex!(l::List, v, i)
-    throw(NotImplementedError("Cannot set indices on `List` objects."))
-end
 #============================================================================================
     \end{List}
 ============================================================================================#

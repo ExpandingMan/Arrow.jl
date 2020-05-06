@@ -187,6 +187,13 @@ struct DataSet
     # TODO what about all the other types? (particularly tensors!!!)
 end
 
+# NOTE: this might not always be true for more complicated schema
+Tables.istable(ds::DataSet) = true
+Tables.columnaccess(::DataSet) = true
+Tables.columns(ds::DataSet) = assemble(ds)
+
+# TODO define Tables.schema
+
 """
     getcolumnmeta
 

@@ -1,7 +1,7 @@
 module Arrow
 
 using Mmap
-using LazyArrays, CategoricalArrays
+using Tables, LazyArrays, CategoricalArrays
 
 # TODO remove this when no longer being used
 using Debugger
@@ -12,11 +12,6 @@ using Base: @propagate_inbounds
 const ALIGNMENT = 8
 
 const FILE_FORMAT_MAGIC_BYTES = b"ARROW1"
-
-
-struct NotImplementedError <: Exception
-    msg::String
-end
 
 
 abstract type ArrowVector{T} <: AbstractVector{T} end

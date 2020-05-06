@@ -1,27 +1,48 @@
 
 @with_kw mutable struct SparseTensorIndexCOO
-    indicesBuffer::Union{Buffer,Nothing} = nothing
+    indicesType::Int_
+    indicesStrides::Vector{Int64} = []
+    indicesBuffer::Buffer
 end
 @ALIGN SparseTensorIndexCOO 1
-FB.slot_offsets(::Type{SparseTensorIndexCOO}) = UInt32[4]
+FB.slot_offsets(::Type{SparseTensorIndexCOO}) = UInt32[4,6,8]
 
-@with_kw mutable struct SparseMatrixIndexCSR
-    indptrBuffer::Union{Buffer,Nothing} = nothing
-    indicesBuffer::Union{Buffer,Nothing} = nothing
+@enum(SparseMatrixCompressedAxis::Int16, SMCARow=0, SMCAColumn=1)
+
+@with_kw mutable struct SparseMatrixIndexCSX
+    compressedAxis::SparseMatrixCompressedAxis = 0
+    indptrType::Int_
+    indptrBuffer::Buffer
+    indicesType::Int_
+    indicesBuffer::Buffer
 end
-@ALIGN SparseMatrixIndexCSR 1
-FB.slot_offsets(::Type{SparseMatrixIndexCSR}) = UInt32[4,6]
+@ALIGN SparseMatrixIndexCSX 1
+FB.slot_offsets(::Type{SparseMatrixIndexCSX}) = UInt32[4,6,8,10,12]
 
-@UNION SparseTensorIndex (Nothing,SparseTensorIndexCOO,SparseMatrixIndexCSR)
+@with_kw mutable struct SparseTensorIndexCSF
+    indptrType::Int_
+    indptrBuffers::Vector{Buffer}
+    indicesType::Int_
+    indicesBuffers::Vector{Buffer}
+    axisOrder::Vector{Int32}
+end
+@ALIGN SparseTensorIndexCSF 1
+FB.slot_offsets(::Type{SparseTensorIndexCSF}) = UInt32[4,6,8,10,12]
+
+@UNION SparseTensorIndex (Nothing,
+                          SparseTensorIndexCOO,
+                          SparseMatrixIndexCSX,
+                          SparseTensorIndexCSF,
+                         )
 
 @with_kw mutable struct SparseTensor
     dtype_type::UInt8 = 0
-    dtype::DType = nothing
-    shape::Vector{TensorDim} = []
+    dtype::DType
+    shape::Vector{TensorDim}
     non_zero_length::Int64 = 0
     sparseIndex_type::UInt8 = 0
-    sparseIndex::SparseTensorIndex = nothing
-    data::Union{Buffer,Nothing} = nothing
+    sparseIndex::SparseTensorIndex
+    data::Buffer
 end
 @ALIGN SparseTensor 1
 FB.slot_offsets(::Type{SparseTensor}) = UInt32[4,6,8,10,12,14,16]

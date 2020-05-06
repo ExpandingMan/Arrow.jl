@@ -7,6 +7,9 @@ include("schema.jl")
 include("tensor.jl")
 include("sparsetensor.jl")
 include("message.jl")
+include("file.jl")
+
+# TODO should probably change all names to a specialized namespace with a prefix
 
 #=======================================================================================================
     \begin{additional constructors}
