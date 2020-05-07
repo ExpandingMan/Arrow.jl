@@ -18,8 +18,8 @@ since Arrow requires 8-byte boundary alignment.
 """
 function writepadded(io::IO, x)
     bw = write(io, x)
-    diff = padding(bw) - bw
-    for i ∈ 1:diff
+    δ = padding(bw) - bw
+    for i ∈ 1:δ
         bw += write(io, 0x00)
     end
     bw
@@ -86,7 +86,7 @@ end
 
 Pack a vector of `Bool`s into bits and place in `buffer` starting at index `idx`.
 """
-function bitpack!(buffer::Vector{UInt8}, A::AbstractVector{Bool}, idx::Integer=1,
+function bitpack!(buffer::AbstractVector{UInt8}, A::AbstractVector{Bool}, idx::Integer=1,
                   (a, b)::Tuple=divrem(length(A), 8))
     for i ∈ 1:a
         k = (i-1)*8 + 1
@@ -97,6 +97,24 @@ function bitpack!(buffer::Vector{UInt8}, A::AbstractVector{Bool}, idx::Integer=1
         buffer[idx + a] = _bitpack_byte(view(A, trail), length(trail))
     end
     buffer
+end
+function bitpack!(io::IO, A::AbstractVector{Bool}, (a, b)::Tuple=divrem(length(A), 8); pad::Bool=true)
+    s = 0
+    for i ∈ 1:a
+        k = (i-1)*8 + 1
+        s += write(io, _bitpack_byte(view(A, k:(k+7)), 8))
+    end
+    if b > 0
+        trail = (a*8+1):length(A)
+        s += write(io, _bitpack_byte(view(A, trail), length(trail)))
+    end
+    if pad
+        δ = padding(s) - s
+        for i ∈ 1:δ
+            write(io, 0x00)
+        end
+    end
+    io
 end
 
 function bitpack(A::AbstractVector{Bool}, buff_idx::Integer=1, pad::Bool=true,

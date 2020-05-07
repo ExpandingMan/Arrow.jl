@@ -14,11 +14,12 @@ include("file.jl")
 #=======================================================================================================
     \begin{additional constructors}
 =======================================================================================================#
-function Field(name::AbstractString, nullable::Bool, dtype::DType,
-               dictionary::Union{DictionaryEncoding,Nothing}=nothing, children::AbstractVector=[],
-               custom_metadata::AbstractVector=[])
-    Field(name, nullable, FB.typeorder(DType, typeof(dtype)), dtype, dictionary, children,
-          custom_metadata)
+# TODO will need more arguments for more complicated types
+function Field(name::Union{AbstractString,Symbol}, eltype::Type{T};
+               dictionary::Union{DictionaryEncoding,Nothing}=nothing, children=[],
+               custom_metadata=[]) where {T}
+    Field(string(name), isnullabletype(T), Fb.typeorder(DType, arrowtype(T)),
+          arrowtype(T), dictionary, children, custom_metadata)
 end
 #=======================================================================================================
     \end{additional constructors}
@@ -71,6 +72,7 @@ function juliatype(fp::FloatingPoint)
     end
 end
 
+isnullabletype(::Type{T}) where {T} = T <: Union{S,Missing} where {S}
 
 arrowtype(::Type{Int8}) = Int_(8, true)
 arrowtype(::Type{Int16}) = Int_(16, true)

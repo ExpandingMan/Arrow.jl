@@ -2,13 +2,12 @@
 #============================================================================================
     \begin{Primitive Constructors}
 ============================================================================================#
-function Primitive!(buffer::Vector{UInt8}, v::AbstractVector, i::Integer=1)
-    copyto!(buffer, i, reinterpret(UInt8, v))
-    Primitive{eltype(v)}(buffer, i, length(v))
+function Primitive!(buf::Vector{UInt8}, v::AbstractVector, i::Integer=1)
+    serialize!(view(buf, i:lastindex(buf)), Primitive, v)
+    Primitive{eltype(v)}(buf, i, length(v))
 end
-function Primitive(v::AbstractVector, blen::Integer=length(v)*sizeof(eltype(v)),
-                   i::Integer=1)
-    Primitive!(Vector{UInt8}(undef, blen), v, i)
+function Primitive(v::AbstractVector, i::Integer=1)
+    Primitive!(Vector{UInt8}(undef, length(v)*sizeof(eltype(v))), v, i)
 end
 #============================================================================================
     \end{Primitive Constructors}
@@ -17,17 +16,12 @@ end
 #============================================================================================
     \begin{BitPrimitive Constructors}
 ============================================================================================#
-function BitPrimitive!(buffer::Vector{UInt8}, v::AbstractVector{Bool}, i::Integer=1,
-                       (ℓ,a,b)::Tuple=_bitpackedbytes(length(v), pad); pad::Bool=false)
-    bitpack!(buffer, v, i, (a, b))
-    BitPrimitive(Primitive{UInt8}(buffer, i, ℓ), length(v))
+function BitPrimitive!(buf::Vector{UInt8}, v::AbstractVector{Bool}, i::Integer=1)
+    serialize!(view(buf, i:lastindex(buf)), BitPrimitive, v)
+    BitPrimitive(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
 end
-function BitPrimitive(v::AbstractVector{Bool}, blen::Integer, i::Integer=1; pad::Bool=true)
-    BitPrimitive!(zeros(UInt8, blen), v, i, pad=pad)
-end
-function BitPrimitive(v::AbstractVector{Bool}; pad::Bool=true)
-    ℓ, a, b = _bitpackedbytes(length(v), pad)
-    BitPrimitive!(zeros(UInt8, ℓ), v, 1, (ℓ, a, b))
+function BitPrimitive(v::AbstractVector{Bool})
+    BitPrimitive!(Vector{UInt8}(undef, bitpackedbytes(length(v))), v)
 end
 #============================================================================================
     \end{BitPrimitive Constructors}
@@ -39,13 +33,13 @@ end
 bitmaskbytes(n::Integer; pad::Bool=true) = bitpackedbytes(n, pad)
 bitmaskbytes(v::AbstractVector; pad::Bool=true) = bitmaskbytes(length(v), pad=pad)
 
-function bitmask!(buffer::Vector{UInt8}, v::AbstractVector, i::Integer=1; pad::Bool=true)
-    BitPrimitive!(buffer, .!ismissing.(v), i)
+function bitmask!(buf::Vector{UInt8}, v::AbstractVector, i::Integer=1)
+    serialize!(view(buf, i:lastindex(buf)), bitmask, v)
+    BitPrimitive(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
 end
-function bitmask(v::AbstractVector, blen::Integer, i::Integer=1; pad::Bool=true)
-    BitPrimitive(.!ismissing.(v), blen, i, pad=pad)
+function bitmask(v::AbstractVector)
+    bitmask!(Vector{UInt8}(undef, bitpackedbytes(length(v))), v)
 end
-bitmask(v::AbstractVector; pad::Bool=true) = BitPrimitive(.!ismissing.(v), pad=pad)
 #============================================================================================
     \end{bitmasks}
 ============================================================================================#
@@ -77,18 +71,12 @@ function offsets!(off::AbstractVector{DefaultOffset}, v::AbstractVector{T},
     end
     off
 end
-function offsets!(buffer::Vector{UInt8}, v::AbstractVector{T},
+function offsets!(buf::Vector{UInt8}, v::AbstractVector{T},
                   i::Integer=1) where {T<:Union{Vector,String}}
-    offsets!(reinterpret(DefaultOffset, view(buffer, i:length(buffer))), v, i)
-    Primitive{DefaultOffset}(buffer, i, length(v)+1)
+    serialize!(view(buf, i:lastindex(buf)), offsets, v)
+    Primitive{DefaultOffset}(buf, i, length(v)+1)
 end
-function offsets(v::AbstractVector{T}, blen::Integer, i::Integer=1;
-                 pad::Bool=true) where {T<:Union{Vector,String}}
-    offsets!(zeros(UInt8, blen), v, i)
-end
-function offsets(v::AbstractVector{T}; pad::Bool=true) where {T<:Union{Vector,String}}
-    offsets(v, offsetsbytes(v, pad=pad))
-end
+offsets(v::AbstractVector) = offsets!(Vector{UInt8}(undef, offsetsbytes(v)), v)
 #============================================================================================
     \end{offsets}
 ============================================================================================#
@@ -260,6 +248,7 @@ Gives the Julia type of the keys of the Arrow `Field` object if it represents a 
 encoding.  As far as I know, this is always a `AbstractVector{<:Union{Integer,Missing}}`.
 """
 function julia_keytype(ϕ::Meta.Field)
+    ϕ.dictionary == nothing && return nothing
     if ϕ.nullable
         AbstractVector{_julia_eltype_nullable(ϕ.dictionary)}
     else
@@ -274,7 +263,7 @@ Returns the Julia type corresponding to the Arrow `Field` metadata given by `ϕ`
 
 For dictionary fields, this returns the index type.
 """
-Meta.juliatype(ϕ::Meta.Field) = ϕ.dictionary == nothing ? julia_valtype(ϕ) : julia_keytype(ϕ)
+Meta.juliatype(ϕ::Meta.Field) = julia_valtype(ϕ)
 
 """
     build
@@ -288,7 +277,7 @@ function build(ϕ::Meta.Field, rb::Meta.RecordBatch, buf::Vector{UInt8}, node_id
 end
 function build(ϕ::Meta.Field, rb::Meta.DictionaryBatch, buf::Vector{UInt8},
                node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
-    build(julia_valtype(ϕ), rb.data, buf, node_idx, buf_idx, i)
+    build(juliatype(ϕ), rb.data, buf, node_idx, buf_idx, i)
 end
 #============================================================================================
     \end{build from schema field}

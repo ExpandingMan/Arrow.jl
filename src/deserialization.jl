@@ -192,8 +192,6 @@ Tables.istable(ds::DataSet) = true
 Tables.columnaccess(::DataSet) = true
 Tables.columns(ds::DataSet) = assemble(ds)
 
-# TODO define Tables.schema
-
 """
     getcolumnmeta
 
@@ -204,6 +202,13 @@ getcolumnmeta(ds::DataSet, i::Integer) = getcolumnmeta(ds)[i]
 getcolumnmeta(ds::DataSet, name::Symbol) = findfirst(ϕ -> fieldname(ϕ) == name,
                                                      getcolumnmeta(ds))
 ncolumns(ds::DataSet) = length(ds.schema.header.fields)
+
+# NOTE: I'm not sure if it's ok that this does `Union{T,Missing}` if the real eltype is just `T`
+function Tables.schema(ds::DataSet)
+    ϕ = getcolumnmeta(ds)
+    Tables.Schema(fieldname.(ϕ), julia_eltype.(ϕ))
+end
+
 
 """
     readbatches
@@ -370,9 +375,9 @@ function filedata(fname::AbstractString; use_mmap::Bool=true)
 end
 
 function _validate_magic_bytes(b::Vector{UInt8})
-    b[1:6] == b"ARROW1" ||
+    b[1:6] == FILE_FORMAT_MAGIC_BYTES ||
         throw(ArgumentError("Invalid arrow file: magic bytes $(String(b[1:min(8,length(b))]))"*
-                            ", expected \"ARROW1\""))
+                            ", expected \"$FILE_FORMAT_MAGIC_BYTES\""))
 end
 
 function filedata(buf::Vector{UInt8})

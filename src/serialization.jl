@@ -1,16 +1,41 @@
 
-rawserialize!(io::IO, ::Type{Primitive}, v::AbstractVector) = writepadded(io, v)
+# NOTE: a lot of this is slow right now, but 1.5 should drastically speed things up because
+# of all the allocations from views
 
-# TODO the below methods are slow because they allocate buffers first
-function rawserialize!(io::IO, ::Type{BitPrimitive}, v::AbstractVector)
-    writepadded(io, values(bitpack(v, pad=false)).buffer)
+function serialize!(buf::AbstractVector{UInt8}, ::Type{Primitive}, v::AbstractVector)
+    copyto!(buf, reinterpret(UInt8, v))
+    buf
 end
-function rawserialize!(io::IO, ::typeof(bitmask), v::AbstractVector)
-    writepadded(io, values(bitmask(v, pad=false)).buffer)
+serialize!(io::IO, ::Type{Primitive}, v::AbstractVector) = (writepadded(io, v); io)
+
+function serialize!(buf::AbstractVector{UInt8}, ::Type{BitPrimitive}, v::AbstractVector) 
+    bitpack!(buf, v)
+    buf
 end
-function rawserialize!(io::IO, ::typeof(offsets), v::AbstractVector)
-    writepadded(io, offsets(v, pad=false).buffer)
+serialize!(io::IO, ::Type{BitPrimitive}, v::AbstractVector) = (bitpack!(io, v); io)
+
+function serialize!(buf::AbstractVector{UInt8}, ::typeof(bitmask), v::AbstractVector)
+    bitpack!(buf, .!ismissing.(v))
+    buf
 end
+serialize!(io::IO, ::typeof(bitmask), v::AbstractVector) = (bitpack!(io, .!ismissing.(v)); io)
+
+function serialize!(buf::AbstractVector{UInt8}, ::typeof(offsets), v::AbstractVector)
+    offsets!(reinterpret(DefaultOffset, buf), v)
+    buf
+end
+function serialize!(io::IO, ::typeof(offsets), v::AbstractVector)
+    last = zero(DefaultOffset)
+    write(io, last)
+    for j ∈ 2:(length(v)+1)
+        next = DefaultOffset(offlength(v[j-1]) + last)
+        write(io, next)
+        last = next
+    end
+    io
+end
+
+# TODO continue from here
 
 function serialize!(io::IO, sertype, v::AbstractVector, off::Integer=0)
     p = position(io)
@@ -39,6 +64,7 @@ function serialize!(buf::AbstractVector{UInt8}, i::Integer, sertype, v::Abstract
 end
 
 
+# TODO change these
 function metadata(::Type{Meta.Field}, name::AbstractString, v::AbstractVector,
                   dtype::Meta.DType=arrowtype(eltype(v)))
     Meta.Field(name, false, dtype)
