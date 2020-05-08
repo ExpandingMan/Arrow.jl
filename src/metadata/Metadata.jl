@@ -14,20 +14,36 @@ include("file.jl")
 #=======================================================================================================
     \begin{additional constructors}
 =======================================================================================================#
-# TODO will need more arguments for more complicated types
-function Field(name::Union{AbstractString,Symbol}, eltype::Type{T};
-               dictionary::Union{DictionaryEncoding,Nothing}=nothing, children=[],
-               custom_metadata=[]) where {T}
-    Field(string(name), isnullabletype(T), Fb.typeorder(DType, arrowtype(T)),
-          arrowtype(T), dictionary, children, custom_metadata)
+# NOTE: no idea how I'll do dictionary stuff with this yet
+function childfield(::Type{T};
+                    dictionary::Union{DictionaryEncoding,Nothing}=nothing,
+                    custom_metadata=Dict(), name::Union{AbstractString,Symbol}="item") where {T}
+    t = childtype(T)
+    isnothing(t) && return nothing
+    Field(string(name), t, dictionary=dictionary, custom_metadata=custom_metadata)
 end
+
+# TODO will need more arguments for more complicated types
+function Field(name::Union{AbstractString,Symbol}, ::Type{T};
+               dictionary::Union{DictionaryEncoding,Nothing}=nothing,
+               custom_metadata=Dict()) where {T}
+    child = childfield(T)
+    Field(string(name), isnullabletype(T), FB.typeorder(DType, typeof(arrowtype(T))),
+          arrowtype(T), dictionary,
+          child == nothing ? [] : [childfield(T)],
+          [KeyValue(kv) for kv ∈ custom_metadata])
+end
+
+KeyValue(p::Pair{Union{AbstractString,Symbol},Union{AbstractString,Symbol}}) = KeyValue(string(p[1]),
+                                                                                        string(p[2]))
 #=======================================================================================================
     \end{additional constructors}
 =======================================================================================================#
 
 
-# TODO have this give decent error messages
-struct InvalidMetadataError <: Exception end
+struct InvalidMetadataError <: Exception
+    msg::String
+end
 
 function juliatype(int::Int_)
     if int.is_signed
@@ -42,7 +58,7 @@ function juliatype(int::Int_)
         elseif int.bitWidth == 128
             Int128
         else
-            throw(InvalidMetadataError())
+            throw(InvalidMetadataError("$int is not valid arrow type metadata"))
         end
     else
         if int.bitWidth == 8
@@ -56,7 +72,7 @@ function juliatype(int::Int_)
         elseif int.bitWidth == 128
             UInt128
         else
-            throw(InvalidMetadataError())
+            throw(InvalidMetadataError("$int is not valid arrow type metadata"))
         end
     end
 end
@@ -68,7 +84,7 @@ function juliatype(fp::FloatingPoint)
     elseif fp.precision == PrecisionDOUBLE
         Float64
     else
-        throw(InvalidMetadataError())
+        throw(InvalidMetadataError("$fp is not valid arrow type metadata"))
     end
 end
 
@@ -97,6 +113,13 @@ arrowtype(::Type{Date}) = Date_(DateUnitDAY)
 arrowtype(::Type{Time}) = Time_(TimeUnitNANOSECOND)
 arrowtype(::Type{DateTime}) = Timestamp(TimeUnitMILLISECOND, "")
 
+arrowtype(::Type{<:AbstractVector}) = List()
+
+arrowtype(::Type{Union{T,Missing}}) where {T} = arrowtype(T)
+
+childtype(::Type) = nothing
+childtype(::Type{<:AbstractVector{T}}) where {T} = T
+childtype(::Type{<:Union{Missing,<:AbstractVector{T}}}) where {T} = T
 
 function readmessage(buf::AbstractVector{UInt8}, i::Integer, j::Integer=length(buf))
     FB.read(Message, @view buf[i:j])

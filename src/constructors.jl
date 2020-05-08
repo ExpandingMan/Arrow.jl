@@ -83,6 +83,8 @@ offsets(v::AbstractVector) = offsets!(Vector{UInt8}(undef, offsetsbytes(v)), v)
 
 #============================================================================================
     \begin{from RecordBatch}
+
+    # TODO do we want to keep this with something that tracks the indices of everything?
 ============================================================================================#
 function primitive(::Type{T}, b::Meta.Buffer, buf::Vector{UInt8}, ℓ::Integer, i::Integer=1
                   ) where {T}
@@ -125,7 +127,10 @@ function _check_empty_buffer(rb::Meta.RecordBatch, node_idx::Integer, buf_idx::I
     rb.nodes[node_idx].null_count == 0 && rb.buffers[buf_idx].length == 0
 end
 
-# TODO is the ordering of the sub-buffers canonical???
+#=--------------------------------------------------------------------------------------
+NOTE: the ordering of the buffers is canonical, and can be found
+ [here](https://arrow.apache.org/docs/format/Columnar.html#buffer-alignment-and-padding)
+--------------------------------------------------------------------------------------=#
 function build(::Type{AbstractVector{T}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
                node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1) where {T}
     primitive(T, rb, buf, node_idx, buf_idx, i), node_idx+1, buf_idx+1
