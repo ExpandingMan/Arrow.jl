@@ -29,12 +29,14 @@ mutable struct RecordBatch <: AbstractBatch
     body_start::Int
     body_length::Int
 
-    # TODO need to figure out how to determine bounds of these
     node_idx::Int
     buf_idx::Int
 end
 
-reset!(rb::RecordBatch) = (rb.node_idx = 1; rb.buf_idx = 1; rb)
+setnodeindex!(rb::RecordBatch, idx::Integer=1) = (rb.node_idx = idx)
+setbufferindex!(rb::RecordBatch, idx::Integer=1) = (rb.buf_idx = idx)
+
+reset!(rb::RecordBatch) = (setnodeindex!(rb); setbufferindex!(rb); rb)
 
 function RecordBatch(m::Meta.RecordBatch, blen::Integer, buf::Vector{UInt8}, i::Integer)
     RecordBatch(m, buf, i, blen, 1, 1)
@@ -64,14 +66,33 @@ function _check_empty_buffer(rb::RecordBatch, node_idx=rb.node_idx, buf_idx=rb.b
 end
 
 function buildnext(::Type{T}, rb::RecordBatch) where {T}
-    Primitive{T}(rb.buffer, bodystart(rb)+getbuffer(rb).offset, getnode(rb).length)
+    Primitive{T}(rb.buffer, bodystart(rb)+getbuffer(rb).offset, getbuffer(rb).length ÷ sizeof(T))
 end
 
 function buildnext!(::Type{T}, rb::RecordBatch, ℓ::Integer) where {T}
     Primitive{T}(rb.buffer, bodystart(rb)+getbuffer!(rb).offset, ℓ)
 end
 function buildnext!(::Type{T}, rb::RecordBatch) where {T}
-    Primitive{T}(rb.buffer, bodystart(rb)+getbuffer!(rb).offset, getnode!(rb).length)
+    getnode!(rb)
+    b = getbuffer!(rb)
+    Primitive{T}(rb.buffer, bodystart(rb)+b.offset, b.length ÷ sizeof(T))
+end
+
+function buildnext!(::typeof(offsets), rb::RecordBatch)
+    n = getnode(rb)
+    b = getbuffer!(rb)
+    Primitive{DefaultOffset}(rb.buffer, bodystart(rb)+b.offset, b.length ÷ sizeof(DefaultOffset))
+end
+
+function buildnext!(::Type{Vector{T}}, rb::RecordBatch) where {T}
+    o = buildnext!(offsets, rb)
+    v = buildnext!(T, rb)
+    List{eltype(v),typeof(v)}(v, o)
+end
+
+function buildnext!(::Type{String}, rb::RecordBatch)
+    l = buildnext!(Vector{UInt8}, rb)
+    ConvertVector{String,typeof(l)}(l)
 end
 
 # the below does not increment the node
@@ -83,11 +104,10 @@ function buildnext!(::typeof(bitmask), rb::RecordBatch)
     end
     n = getnode(rb)
     b = getbuffer!(rb)
-    BitPrimitive(Primitive{UInt8}(rb.buffer, b.offset, b.length), n.length)
+    BitPrimitive(Primitive{UInt8}(rb.buffer, bodystart(rb)+b.offset, b.length), n.length)
 end
 
 function buildnext!(::Type{Union{T,Missing}}, rb::RecordBatch) where {T}
-    @bp
     b = buildnext!(bitmask, rb)
     v = buildnext!(T, rb)
     isnothing(b) ? v : NullableVector{T,typeof(v)}(v, b)
@@ -170,12 +190,14 @@ function batch(io::IO, dataio::IO=io, data_skip::Integer=0)
 end
 
 
-struct Column
+mutable struct Column
     header::Meta.Field
     batches::Vector{AbstractBatch}
-
-    # TODO probably need to store relevant index ranges here
+    node_idx::Vector{Union{Int,Nothing}}  # start position of nodes
+    buf_idx::Vector{Union{Int,Nothing}}  # start position of buffers
 end
+
+Meta.juliatype(c::Column) = Meta.juliatype(c.header)
 
 reset!(c::Column) = (foreach(reset!, c.batches); c)
 
@@ -184,8 +206,22 @@ isnullable(c::Column) = c.header.nullable
 batches(c::Column) = c.batches
 nbatches(c::Column) = length(batches(c))
 
+getnodeindices(c::Column) = [c.batches[i].node_idx for i ∈ 1:nbatches(c)]
+getbufferindices(c::Column) = [c.batches[i].buf_idx for i ∈ 1:nbatches(c)]
+
+"""
+    setfirstcolumn!(c::Column)
+
+Sets the indices appropriate for the first column in a schema.
+"""
+function setfirstcolumn!(c::Column)
+    c.node_idx = fill(1, length(c.batches))
+    c.buf_idx = fill(1, length(c.batches))
+    c
+end
+
 function Column(sch::Meta.Schema, idx::Integer, batches::AbstractVector{<:AbstractBatch})
-    Column(sch.fields[idx], batches)
+    Column(sch.fields[idx], batches, fill(nothing, length(batches)), fill(nothing, length(batches)))
 end
 
 function Column(ϕ::Meta.Field, buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
@@ -202,11 +238,21 @@ end
 
 build(c::Column) = nbatches == 1 ? build(c, 1) : Vcat((build(c, i) for i ∈ 1:nbatches(c))...)
 
-build(c::Column, i::Integer) = build(c.header, c.batches[i])
+function build(c::Column, i::Integer)
+    n, b = c.node_idx[i], c.buf_idx[i]
+    if isnothing(n) || isnothing(b)
+        throw(ErrorException("tried to build uninitialized column `$(name(c))`"))
+    end
+    setnodeindex!(c.batches[i], c.node_idx[i])
+    setbufferindex!(c.batches[i], c.buf_idx[i])
+    build(c.header, c.batches[i])
+end
 
 build(ϕ::Meta.Field, rb::RecordBatch) = build(juliatype(ϕ), ϕ, rb)
 
 build(::Type{AbstractVector{T}}, ϕ::Meta.Field, rb::RecordBatch) where{T} = buildnext!(T, rb)
+
+# TODO now need to do fields with children
 
 """
     readbatches
@@ -259,14 +305,16 @@ column(t::Table, col::Integer) = columns(t)[col]
 column(t::Table, col::Symbol) = columns(t)[findfirst(c -> name(c) == col, columns(t))]
 
 ncolumns(sch::Meta.Schema) = length(sch.fields)
-ncolumns(t::Table) = ncolumns(sch.header)
+ncolumns(t::Table) = ncolumns(t.header)
 
 function Table(batches::AbstractVector{<:AbstractBatch})
     if isempty(batches)
         throw(ArgumentError("no batches provided, undable to build Table"))
     end
     sch = first(batches).header
-    Table(sch, [Column(sch, i, batches[2:end]) for i ∈ 1:ncolumns(sch)])
+    cols = [Column(sch, i, batches[2:end]) for i ∈ 1:ncolumns(sch)]
+    setfirstcolumn!(first(cols))
+    Table(sch, cols)
 end
 function Table(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
                i::AbstractVector{<:Integer}=fill(-1, length(rf)),
@@ -280,9 +328,17 @@ function Table(io::IO, dataio::IO=io, data_skip::Integer=0, max_batches::Integer
     Table(readbatches(io, dataio, data_skip, max_batches))
 end
 
-build(t::Table, col) = build(column(t, col))
+function build(t::Table, i::Integer)
+    p = build(t.columns[i])
+    if i < ncolumns(t)
+        t.columns[i+1].node_idx = getnodeindices(t.columns[i])
+        t.columns[i+1].buf_idx = getbufferindices(t.columns[i])
+    end
+    p
+end
+build(t::Table, s::Symbol) = build(t, findfirst(c -> name(c) == s, columns(t)))
 
-build(t::Table) = (;(name(c)=>build(c) for c ∈ columns(t))...)
+build(t::Table) = (;(name(column(t, i))=>build(t, i) for i ∈ 1:ncolumns(t))...)
 
 #============================================================================================
     \begin{from RecordBatch}
