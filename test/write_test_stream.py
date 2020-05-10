@@ -1,8 +1,9 @@
 import pyarrow as pa
-import numpy as np
+
+v = pa.array([1,2,3,4])
 
 data = [
-        pa.array(np.array([1,2,3,4])),
+        pa.array([1,2,3,4]),
         pa.array([1.0, None, 2.0, None]),
         pa.array(["fire", "walk", "with", "me"]),
         pa.array([[1,2], [3,4], [5,6], [7,8,9]]),
