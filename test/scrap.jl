@@ -9,8 +9,4 @@ const A = Arrow
 
 using Arrow: build
 
-# TODO column 8 is still fubar
-
 buf = read("testdata1.dat")
-
-

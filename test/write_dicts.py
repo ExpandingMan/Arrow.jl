@@ -1,8 +1,6 @@
 import pyarrow as pa
 import pandas as pd
 
-v = pa.array([1,2,3,4])
-
 data = [
         pa.array(pd.Categorical([4.0, 5.0, 5.0, 6.0, 7.0, 6.0, 4.0])),
         pa.array([4, 5, 5, 6, 7, 6, 4]),

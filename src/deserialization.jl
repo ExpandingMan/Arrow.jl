@@ -36,6 +36,9 @@ end
 setnodeindex!(rb::RecordBatch, idx::Integer=1) = (rb.node_idx = idx)
 setbufferindex!(rb::RecordBatch, idx::Integer=1) = (rb.buf_idx = idx)
 
+getnodeindex(rb::RecordBatch) = rb.node_idx
+getbufferindex(rb::RecordBatch) = rb.buf_idx
+
 reset!(rb::RecordBatch) = (setnodeindex!(rb); setbufferindex!(rb); rb)
 
 function RecordBatch(m::Meta.RecordBatch, blen::Integer, buf::Vector{UInt8}, i::Integer)
@@ -112,6 +115,7 @@ end
 function buildnext!(::Type{Union{T,Missing}}, rb::RecordBatch) where {T}
     b = buildnext!(bitmask, rb)
     v = buildnext!(T, rb)
+    @bp
     isnothing(b) ? v : NullableVector{T,typeof(v)}(v, b)
 end
 
@@ -129,22 +133,31 @@ function DictionaryBatch(m::Meta.DictionaryBatch, blen::Integer, buf::Vector{UIn
     # TODO is it ok to pass RecordBatch constructed with same body_start?
     DictionaryBatch(m, RecordBatch(m.data, blen, buf, i), buf, i, blen)
 end
-batch(m::Meta.DictionaryBatch, blength, buf::Vector{UInt8}, i::Integer) = DictionaryBatch(m, buf, i)
+function batch(m::Meta.DictionaryBatch, blen::Integer, buf::Vector{UInt8}, i::Integer)
+    DictionaryBatch(m, blen, buf, i)
+end
 
 dictionaryid(b::Meta.DictionaryBatch) = b.id
 dictionaryid(ϕ::Meta.DictionaryEncoding) = ϕ.id
 dictionaryid(ϕ::Meta.Field) = ϕ.dictionary == nothing ? nothing : dictionaryid(ϕ.dictionary)
 dictionaryid(b::DictionaryBatch) = dictionaryid(b.header)
 
+getnodeindex(db::DictionaryBatch) = getnodeindex(db.record_batch)
+getbufferindex(db::DictionaryBatch) = getbufferindex(db.record_batch)
+
+reset!(db::DictionaryBatch) = reset!(db.record_batch)
+
+setnodeindex!(db::DictionaryBatch, idx::Integer=1) = setnodeindex!(db.record_batch, idx)
+setbufferindex!(db::DictionaryBatch, idx::Integer=1) = setbufferindex!(db.record_batch, idx)
+
 nnodes(db::DictionaryBatch) = nnodes(db.record_batch)
 nbuffers(db::DictionaryBatch) = nbuffers(db.record_batch)
 
-getnode(db::DictionaryBatch, idx) = getnode(db.record_batch, idx)
-getbuffer(db::DictionaryBatch, idx) = getnode(db.record_batch, idx)
+getnode(db::DictionaryBatch, idx=db.record_batch.node_idx) = getnode(db.record_batch, idx)
+getbuffer(db::DictionaryBatch, idx=db.record_batch.buf_idx) = getbuffer(db.record_batch, idx)
 
-nodeindex!(db::DictionaryBatch, δ::Integer=1) = nodeindex!(db.record_batch, δ)
-bufferindex!(db::DictionaryBatch, δ::Integer=1) = nodeindex!(db.record_batch, δ)
-
+getnode!(db::DictionaryBatch) = getnode!(db.record_batch)
+getbuffer!(db::DictionaryBatch) = getbuffer!(db.record_batch)
 
 batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer) = batch(m.header, m.bodyLength, buf, i)
 
@@ -205,11 +218,24 @@ reset!(c::Column) = (foreach(reset!, c.batches); c)
 
 name(c::Column) = Symbol(c.header.name)
 isnullable(c::Column) = c.header.nullable
+
 batches(c::Column) = c.batches
+
 nbatches(c::Column) = length(batches(c))
 
-getnodeindices(c::Column) = [c.batches[i].node_idx for i ∈ 1:nbatches(c)]
-getbufferindices(c::Column) = [c.batches[i].buf_idx for i ∈ 1:nbatches(c)]
+dictionaryid(c::Column) = dictionaryid(c.header)
+
+getnodeindices(c::Column) = [getnodeindex(c.batches[i]) for i ∈ 1:nbatches(c)]
+getbufferindices(c::Column) = [getbufferindex(c.batches[i]) for i ∈ 1:nbatches(c)]
+
+function finddictionarybatch(c::Column)
+    idx = findfirst(batches(c)) do b
+        b isa DictionaryBatch && dictionaryid(b) == dictionaryid(c)
+    end
+    isnothing(idx) &&
+        throw(ErrorException("can't find dictionary batch for column `$(name(c))`"))
+    idx
+end
 
 """
     setfirstcolumn!(c::Column)
@@ -222,8 +248,12 @@ function setfirstcolumn!(c::Column)
     c
 end
 
+function Column(ϕ::Meta.Field, bs::AbstractVector{<:AbstractBatch})
+    Column(ϕ, bs, fill(nothing, length(bs)), fill(nothing, length(bs)))
+end
+
 function Column(sch::Meta.Schema, idx::Integer, batches::AbstractVector{<:AbstractBatch})
-    Column(sch.fields[idx], batches, fill(nothing, length(batches)), fill(nothing, length(batches)))
+    Column(sch.fields[idx], batches)
 end
 
 function Column(ϕ::Meta.Field, buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
@@ -238,7 +268,24 @@ function Column(ϕ::Meta.Field, io::IO, dataio::IO=io, data_skip::Integer=0,
     Column(ϕ, readbatches(io, dataio, data_skip, max_batches))
 end
 
-build(c::Column) = nbatches == 1 ? build(c, 1) : Vcat((build(c, i) for i ∈ 1:nbatches(c))...)
+function build(::Type{T}, c::Column) where {T<:AbstractBatch}
+    idx = findall(b -> b isa T, batches(c))
+    ntuple(i -> build(c, idx[i]), length(idx))
+end
+build(::Type{DictionaryBatch}, c::Column) = (build(c, finddictionarybatch(c)),)
+
+julia_eltype(c::Column) = julia_eltype(c.header)
+
+function build(c::Column)
+    v = if !isnothing(c.header.dictionary)
+        v = build(DictionaryBatch, c)
+        k = build(RecordBatch, c)
+        ntuple(i -> DictVector(k[i], v[1]), length(k))
+    else
+        build(RecordBatch, c)
+    end
+    length(v) == 1 ? v[1] : Vcat(v...)
+end
 
 function build(c::Column, i::Integer)
     n, b = c.node_idx[i], c.buf_idx[i]
@@ -250,11 +297,12 @@ function build(c::Column, i::Integer)
     build(c.header, c.batches[i])
 end
 
-build(ϕ::Meta.Field, rb::RecordBatch) = build(juliatype(ϕ), ϕ, rb)
-
+function build(ϕ::Meta.Field, rb::RecordBatch)
+    T = isnothing(ϕ.dictionary) ? juliatype(ϕ) : julia_keytype(ϕ)
+    build(T, ϕ, rb)
+end
+build(ϕ::Meta.Field, db::DictionaryBatch) = build(juliatype(ϕ), ϕ, db.record_batch)
 build(::Type{AbstractVector{T}}, ϕ::Meta.Field, rb::RecordBatch) where{T} = buildnext!(T, rb)
-
-# TODO now need to do fields with children
 
 """
     readbatches
@@ -342,121 +390,11 @@ build(t::Table, s::Symbol) = build(t, findfirst(c -> name(c) == s, columns(t)))
 
 build(t::Table) = (;(name(column(t, i))=>build(t, i) for i ∈ 1:ncolumns(t))...)
 
-#============================================================================================
-    \begin{from RecordBatch}
+Tables.istable(::Table) = true
+Tables.columnaccess(::Table) = true
+Tables.columns(t::Table) = build(t)
 
-    # TODO do we want to keep this with something that tracks the indices of everything?
-============================================================================================#
-function primitive(::Type{T}, b::Meta.Buffer, buf::Vector{UInt8}, ℓ::Integer, i::Integer=1
-                  ) where {T}
-    Primitive{T}(buf, i + b.offset, ℓ)
-end
-function primitive(::Type{T}, ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8},
-                   i::Integer=1) where {T}
-    primitive(T, b, buf, ϕn.length, i)
-end
-function primitive(::Type{T}, rb::Meta.RecordBatch, buf::Vector{UInt8},
-                   node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1) where {T}
-    primitive(T, rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
-end
-
-function bitprimitive(ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8}, i::Integer=1)
-    BitPrimitive(primitive(UInt8, ϕn, b, buf, i), ϕn.length)
-end
-function bitprimitive(rb::Meta.RecordBatch, buf::Vector{UInt8},
-                      node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
-    bitprimitive(rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
-end
-
-function bitmask(ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8}, i::Integer=1)
-    bitprimitive(ϕn, b, buf, i)
-end
-function bitmask(rb::Meta.RecordBatch, buf::Vector{UInt8},
-                 node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
-    bitmask(rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
-end
-
-function offsets(ϕn::Meta.FieldNode, b::Meta.Buffer, buf::Vector{UInt8}, i::Integer=1)
-    Primitive{DefaultOffset}(buf, i + b.offset, ϕn.length+1)
-end
-function offsets(rb::Meta.RecordBatch, buf::Vector{UInt8},
-                 node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
-    offsets(rb.nodes[node_idx], rb.buffers[buf_idx], buf, i)
-end
-
-function _check_empty_buffer(rb::Meta.RecordBatch, node_idx::Integer, buf_idx::Integer)
-    rb.nodes[node_idx].null_count == 0 && rb.buffers[buf_idx].length == 0
-end
-
-#=--------------------------------------------------------------------------------------
-NOTE: the ordering of the buffers is canonical, and can be found
- [here](https://arrow.apache.org/docs/format/Columnar.html#buffer-alignment-and-padding)
---------------------------------------------------------------------------------------=#
-function build(::Type{AbstractVector{T}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
-               node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1) where {T}
-    primitive(T, rb, buf, node_idx, buf_idx, i), node_idx+1, buf_idx+1
-end
-function build(::Type{AbstractVector{Union{T,Missing}}}, rb::Meta.RecordBatch,
-               buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
-               i::Integer=1) where {T}
-    # handle cases where schema says nullable, but mask is missing
-    if _check_empty_buffer(rb, node_idx, buf_idx)
-        return build(AbstractVector{T}, rb, buf, node_idx, buf_idx+1, i)
-    end
-    b = bitmask(rb, buf, node_idx, buf_idx, i)
-    buf_idx += 1
-    v, node_idx, buf_idx = build(AbstractVector{T}, rb, buf, node_idx, buf_idx, i)
-    NullableVector{T,typeof(v)}(v, b), node_idx, buf_idx
-end
-function build(::Type{AbstractVector{Vector{T}}}, rb::Meta.RecordBatch,
-               buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
-               i::Integer=1) where {T}
-    o = offsets(rb, buf, node_idx, buf_idx, i)
-    node_idx += 1
-    buf_idx += 1
-    v, node_idx, buf_idx = build(AbstractVector{T}, rb, buf, node_idx, buf_idx, i)
-    List{eltype(v),typeof(v)}(v, o), node_idx, buf_idx
-end
-function build(::Type{AbstractVector{Union{Vector{T},Missing}}}, rb::Meta.RecordBatch,
-               buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1,
-               i::Integer=1) where {T}
-    if _check_empty_buffer(rb, node_idx, buf_idx)
-        return build(AbstractVector{Vector{T}}, rb, buf, node_idx, buf_idx+1, i)
-    end
-    b = bitmask(rb, buf, node_idx, buf_idx, i)
-    buf_idx += 1
-    l, node_idx, buf_idx = build(AbstractVector{Vector{T}}, rb, buf, node_idx, buf_idx, i)
-    NullableVector{bare_eltype(l),typeof(l)}(l, b), node_idx, buf_idx
-end
-
-function _string_list(rb::Meta.RecordBatch, buf::Vector{UInt8}, node_idx::Integer=1,
-                      buf_idx::Integer=1, i::Integer=1)
-    o = offsets(rb, buf, node_idx, buf_idx, i)
-    buf_idx += 1
-    # note that the creation of this primitive also requires special handling
-    v = primitive(UInt8, rb.buffers[buf_idx], buf, rb.buffers[buf_idx].length, i)
-    List{eltype(v),typeof(v)}(v, o)
-end
-# NOTE: they left us no choice but to have special methods for strings
-function build(::Type{AbstractVector{String}}, rb::Meta.RecordBatch, buf::Vector{UInt8},
-               node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
-    l = _string_list(rb, buf, node_idx, buf_idx, i)
-    ConvertVector{String,typeof(l)}(l), node_idx+1, buf_idx+2
-end
-function build(::Type{AbstractVector{Union{String,Missing}}}, rb::Meta.RecordBatch,
-               buf::Vector{UInt8}, node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
-    if _check_empty_buffer(rb, node_idx, buf_idx)
-        return build(AbstractVector{String}, rb, buf, node_idx, buf_idx+1, i)
-    end
-    b = bitmask(rb, buf, node_idx, buf_idx, i)
-    buf_idx += 1
-    l = _string_list(rb, buf, node_idx, buf_idx, i)
-    l = NullableVector{Vector{UInt8},typeof(l)}(l, b)
-    ConvertVector{Union{String,Missing},typeof(l)}(l), node_idx+1, buf_idx+2
-end
-#============================================================================================
-    \end{from RecordBatch}
-============================================================================================#
+Tables.schema(t::Table) = Tables.Schema(name.(t.columns), julia_eltype.(t.columns))
 
 #============================================================================================
     \begin{build from schema field}
@@ -498,14 +436,7 @@ represent this returns `Vector{Int64}` objects when indexed.
 """
 julia_eltype(ϕ::Meta.Field) = ϕ.nullable ? _julia_eltype_nullable(ϕ) : _julia_eltype(ϕ)
 
-"""
-    julia_valtype(ϕ)
-
-Gives the Julia values type of the Arrow `Field` metadata object.  The constructed object is
-typically a subtype of this (though there is an exception because of how the arrow standard
-decided to handle nullables).
-"""
-julia_valtype(ϕ::Meta.Field) = AbstractVector{julia_eltype(ϕ)}
+Meta.juliatype(ϕ::Meta.Field) = AbstractVector{julia_eltype(ϕ)}
 
 """
     julia_keytype(ϕ)
@@ -521,15 +452,6 @@ function julia_keytype(ϕ::Meta.Field)
         AbstractVector{_julia_eltype(ϕ.dictionary)}
     end
 end
-
-"""
-    juliatype(ϕ)
-
-Returns the Julia type corresponding to the Arrow `Field` metadata given by `ϕ`.
-
-For dictionary fields, this returns the index type.
-"""
-Meta.juliatype(ϕ::Meta.Field) = julia_valtype(ϕ)
 
 """
     build

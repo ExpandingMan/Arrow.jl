@@ -1,9 +1,6 @@
 
 const DefaultOffset = Int32
 
-# TODO add simple constructors for these
-
-
 #============================================================================================
     \begin{List}
 ============================================================================================#
@@ -23,8 +20,11 @@ Base.getindex(l::List, i::Integer) = values(l)[offset1_range(l, i)]
 
 #============================================================================================
     \begin{NullableVector}
+
+    NOTE: we don't constraint the values type `V` more because sometimes `T` is passed
+    as `Vector{Union{S,Missing}}` and the eltype of `V` is `Vector{S}`.
 ============================================================================================#
-struct NullableVector{T,V<:AbstractVector{<:Union{T,Missing}}} <: ArrowVector{Union{T,Missing}}
+struct NullableVector{T,V<:AbstractVector} <: ArrowVector{Union{T,Missing}}
     values::V
     bitmask::BitPrimitive
 end
@@ -67,8 +67,7 @@ Base.getindex(l::ConvertVector{T}, i::Integer) where {T} = arrowconvert(T, value
 #============================================================================================
     \begin{DictVector}
 ============================================================================================#
-struct DictVector{T,K<:AbstractVector{<:Union{Missing,Integer}},
-                  V<:AbstractVector} <: ArrowVector{T}
+struct DictVector{T,K<:AbstractVector,V<:AbstractVector} <: ArrowVector{T}
     keys::K
     values::V
 end
