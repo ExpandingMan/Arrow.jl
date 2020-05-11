@@ -5,29 +5,33 @@
 #======================================================================================================
     \begin{data serialization}
 ======================================================================================================#
-function serialize!(buf::AbstractVector{UInt8}, ::Type{Primitive}, v::AbstractVector)
-    copyto!(buf, reinterpret(UInt8, v))
-    buf
+function write!(buf::AbstractVector{UInt8}, ::Type{Primitive}, v::AbstractVector)
+    v = reinterpret(UInt8, v)
+    copyto!(buf, v)
+    padding(length(v))
 end
-serialize!(io::IO, ::Type{Primitive}, v::AbstractVector) = (writepadded(io, v); io)
+write!(io::IO, ::Type{Primitive}, v::AbstractVector) = writepadded(io, v)
 
-function serialize!(buf::AbstractVector{UInt8}, ::Type{BitPrimitive}, v::AbstractVector)
+function write!(buf::AbstractVector{UInt8}, ::Type{BitPrimitive}, v::AbstractVector)
     bitpack!(buf, v)
-    buf
+    bitpackedbytes(length(v))
 end
-serialize!(io::IO, ::Type{BitPrimitive}, v::AbstractVector) = (bitpack!(io, v); io)
+function write!(io::IO, ::Type{BitPrimitive}, v::AbstractVector)
+    bitpack!(io, v)
+    bitpackedbytes(length(v))
+end
 
-function serialize!(buf::AbstractVector{UInt8}, ::typeof(bitmask), v::AbstractVector)
+function write!(buf::AbstractVector{UInt8}, ::typeof(bitmask), v::AbstractVector)
     bitpack!(buf, .!ismissing.(v))
     buf
 end
-serialize!(io::IO, ::typeof(bitmask), v::AbstractVector) = (bitpack!(io, .!ismissing.(v)); io)
+write!(io::IO, ::typeof(bitmask), v::AbstractVector) = (bitpack!(io, .!ismissing.(v)); io)
 
-function serialize!(buf::AbstractVector{UInt8}, ::typeof(offsets), v::AbstractVector)
+function write!(buf::AbstractVector{UInt8}, ::typeof(offsets), v::AbstractVector)
     offsets!(reinterpret(DefaultOffset, buf), v)
     buf
 end
-function serialize!(io::IO, ::typeof(offsets), v::AbstractVector)
+function write!(io::IO, ::typeof(offsets), v::AbstractVector)
     last = zero(DefaultOffset)
     write(io, last)
     for j ∈ 2:(length(v)+1)
@@ -37,8 +41,27 @@ function serialize!(io::IO, ::typeof(offsets), v::AbstractVector)
     end
     io
 end
+
+
+# the below methods will determine the appropriate types
+
+write!(buf::BufferOrIO, v::AbstractVector) = write!(buf, Primitive, v)
+
+function write!(buf::BufferOrIO, v::AbstractVector{Union{T,Missing}}) where {T}
+    write!(buf, bitmask, v)
+    write!(buf, values, v)
+end
 #======================================================================================================
     \end{data serialization}
+======================================================================================================#
+
+#======================================================================================================
+    \begin{arrow format for individual vectors}
+======================================================================================================#
+arrow(v::AbstractVector) = Primitive(v)
+arrow(v::AbstractVector{Bool}) = BitPrimitive(v)
+#======================================================================================================
+    \end{arrow format for individual vectors}
 ======================================================================================================#
 
 

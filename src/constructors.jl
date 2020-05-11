@@ -3,11 +3,16 @@
     \begin{Primitive Constructors}
 ============================================================================================#
 function Primitive!(buf::Vector{UInt8}, v::AbstractVector, i::Integer=1)
-    serialize!(view(buf, i:lastindex(buf)), Primitive, v)
+    write!(view(buf, i:lastindex(buf)), Primitive, v)
     Primitive{eltype(v)}(buf, i, length(v))
 end
 function Primitive(v::AbstractVector, i::Integer=1)
-    Primitive!(Vector{UInt8}(undef, length(v)*sizeof(eltype(v))), v, i)
+    Primitive!(Vector{UInt8}(undef, length(v)*sizeof(eltype(v))+i-1), v, i)
+end
+
+function valuesbytes(v::AbstractVector{T}; pad::Bool=true) where {T} 
+    n = length(v)*sizeof(T)
+    pad ? padding(n) : n
 end
 #============================================================================================
     \end{Primitive Constructors}
@@ -17,7 +22,7 @@ end
     \begin{BitPrimitive Constructors}
 ============================================================================================#
 function BitPrimitive!(buf::Vector{UInt8}, v::AbstractVector{Bool}, i::Integer=1)
-    serialize!(view(buf, i:lastindex(buf)), BitPrimitive, v)
+    write!(view(buf, i:lastindex(buf)), BitPrimitive, v)
     BitPrimitive(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
 end
 function BitPrimitive(v::AbstractVector{Bool})
@@ -34,7 +39,7 @@ bitmaskbytes(n::Integer; pad::Bool=true) = bitpackedbytes(n, pad)
 bitmaskbytes(v::AbstractVector; pad::Bool=true) = bitmaskbytes(length(v), pad=pad)
 
 function bitmask!(buf::Vector{UInt8}, v::AbstractVector, i::Integer=1)
-    serialize!(view(buf, i:lastindex(buf)), bitmask, v)
+    write!(view(buf, i:lastindex(buf)), bitmask, v)
     BitPrimitive(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
 end
 function bitmask(v::AbstractVector)
@@ -73,7 +78,7 @@ function offsets!(off::AbstractVector{DefaultOffset}, v::AbstractVector{T},
 end
 function offsets!(buf::Vector{UInt8}, v::AbstractVector{T},
                   i::Integer=1) where {T<:Union{Vector,String}}
-    serialize!(view(buf, i:lastindex(buf)), offsets, v)
+    write!(view(buf, i:lastindex(buf)), offsets, v)
     Primitive{DefaultOffset}(buf, i, length(v)+1)
 end
 offsets(v::AbstractVector) = offsets!(Vector{UInt8}(undef, offsetsbytes(v)), v)

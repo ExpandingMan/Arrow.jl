@@ -1,7 +1,5 @@
 import pyarrow as pa
 
-v = pa.array([1,2,3,4])
-
 data = [
         pa.array([1,2,3,4]),
         pa.array([1.0, None, 2.0, None]),

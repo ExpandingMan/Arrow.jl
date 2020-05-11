@@ -76,6 +76,12 @@ function _bitpackedbytes(n::Integer, pad::Bool=true)
     pad && (ℓ += paddinglength(ℓ))
     ℓ, a, b
 end
+
+"""
+    bitpackedbytes(n[, pad=true])
+
+Determines the number of bytes used by `n` bits, optionally with padding.
+"""
 function bitpackedbytes(n::Integer, pad::Bool=true)
     ℓ, a, b = _bitpackedbytes(n, pad)
     ℓ

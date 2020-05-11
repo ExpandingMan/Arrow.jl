@@ -13,6 +13,8 @@ const ALIGNMENT = 8
 
 const FILE_FORMAT_MAGIC_BYTES = b"ARROW1"
 
+const BufferOrIO = Union{IO,AbstractVector{UInt8}}
+
 
 abstract type ArrowVector{T} <: AbstractVector{T} end
 
@@ -52,6 +54,8 @@ function offset1_range(A::ArrowVector, i::Integer)
 end
 
 Base.size(p::ArrowVector) = size(unmasked(p))
+
+# TODO ideally views of arrow views would be other arrow views, and not SubArray
 
 function Base.getindex(p::ArrowVector{Union{T,Missing}}, i::Integer) where {T}
     bitmask(p)[i] ? @inbounds(unmasked(p)[i]) : missing
