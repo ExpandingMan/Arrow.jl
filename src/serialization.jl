@@ -5,32 +5,15 @@
 #======================================================================================================
     \begin{data serialization}
 ======================================================================================================#
-function write!(buf::AbstractVector{UInt8}, ::Type{Primitive}, v::AbstractVector)
-    v = reinterpret(UInt8, v)
-    copyto!(buf, v)
-    padding(length(v))
-end
 write!(io::IO, ::Type{Primitive}, v::AbstractVector) = writepadded(io, v)
 
-function write!(buf::AbstractVector{UInt8}, ::Type{BitPrimitive}, v::AbstractVector)
-    bitpack!(buf, v)
-    bitpackedbytes(length(v))
-end
-function write!(io::IO, ::Type{BitPrimitive}, v::AbstractVector)
+function write!(io::IO, ::Type{BitVector}, v::AbstractVector)
     bitpack!(io, v)
     bitpackedbytes(length(v))
 end
 
-function write!(buf::AbstractVector{UInt8}, ::typeof(bitmask), v::AbstractVector)
-    bitpack!(buf, .!ismissing.(v))
-    buf
-end
 write!(io::IO, ::typeof(bitmask), v::AbstractVector) = (bitpack!(io, .!ismissing.(v)); io)
 
-function write!(buf::AbstractVector{UInt8}, ::typeof(offsets), v::AbstractVector)
-    offsets!(reinterpret(DefaultOffset, buf), v)
-    buf
-end
 function write!(io::IO, ::typeof(offsets), v::AbstractVector)
     last = zero(DefaultOffset)
     write(io, last)
@@ -59,7 +42,7 @@ end
     \begin{arrow format for individual vectors}
 ======================================================================================================#
 arrow(v::AbstractVector) = Primitive(v)
-arrow(v::AbstractVector{Bool}) = BitPrimitive(v)
+arrow(v::AbstractVector{Bool}) = BitVector(v)
 #======================================================================================================
     \end{arrow format for individual vectors}
 ======================================================================================================#

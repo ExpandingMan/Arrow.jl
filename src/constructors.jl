@@ -10,7 +10,7 @@ function Primitive(v::AbstractVector, i::Integer=1)
     Primitive!(Vector{UInt8}(undef, length(v)*sizeof(eltype(v))+i-1), v, i)
 end
 
-function valuesbytes(v::AbstractVector{T}; pad::Bool=true) where {T} 
+function valuesbytes(v::AbstractVector{T}; pad::Bool=true) where {T}
     n = length(v)*sizeof(T)
     pad ? padding(n) : n
 end
@@ -19,17 +19,17 @@ end
 ============================================================================================#
 
 #============================================================================================
-    \begin{BitPrimitive Constructors}
+    \begin{BitVector Constructors}
 ============================================================================================#
-function BitPrimitive!(buf::Vector{UInt8}, v::AbstractVector{Bool}, i::Integer=1)
-    write!(view(buf, i:lastindex(buf)), BitPrimitive, v)
-    BitPrimitive(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
+function BitVector!(buf::Vector{UInt8}, v::AbstractVector{Bool}, i::Integer=1)
+    write!(view(buf, i:lastindex(buf)), BitVector, v)
+    BitVector(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
 end
-function BitPrimitive(v::AbstractVector{Bool})
-    BitPrimitive!(Vector{UInt8}(undef, bitpackedbytes(length(v))), v)
+function BitVector(v::AbstractVector{Bool})
+    BitVector!(Vector{UInt8}(undef, bitpackedbytes(length(v))), v)
 end
 #============================================================================================
-    \end{BitPrimitive Constructors}
+    \end{BitVector Constructors}
 ============================================================================================#
 
 #============================================================================================
@@ -40,7 +40,7 @@ bitmaskbytes(v::AbstractVector; pad::Bool=true) = bitmaskbytes(length(v), pad=pa
 
 function bitmask!(buf::Vector{UInt8}, v::AbstractVector, i::Integer=1)
     write!(view(buf, i:lastindex(buf)), bitmask, v)
-    BitPrimitive(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
+    BitVector(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
 end
 function bitmask(v::AbstractVector)
     bitmask!(Vector{UInt8}(undef, bitpackedbytes(length(v))), v)

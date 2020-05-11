@@ -60,7 +60,7 @@ end
     setbyte!(p, _setbit(getbyte(p, a), v, b), a)
 end
 
-# PERF NOTE: this is worryingly slow
+# TODO: this is unbelievably slow right now and has allocations
 function Base.setindex!(p::Primitive{T}, v, i::Integer) where {T}
     p.buffer[start_idx(p, i):end_idx(p, i)] = reinterpret(UInt8, [convert(T, v)])
     v
@@ -69,26 +69,4 @@ end
 values(p::Primitive) = p
 #============================================================================================
     \end{Primitive}
-============================================================================================#
-
-#============================================================================================
-    \start{BitPrimitive}
-============================================================================================#
-struct BitPrimitive <: ArrowVector{Bool}
-    values::Primitive{UInt8}
-    ℓ::Int
-end
-
-Base.size(p::BitPrimitive) = (p.ℓ,)
-function Base.getindex(p::BitPrimitive, i::Integer)
-    @boundscheck checkbounds(p, i)
-    @inbounds getbit(values(p), i)
-end
-function Base.setindex!(p::BitPrimitive, v, i::Integer)
-    @boundscheck checkbounds(p, i)
-    @inbounds setbit!(values(p), convert(Bool, v), i)
-    v
-end
-#============================================================================================
-    \end{BitPrimitive}
 ============================================================================================#

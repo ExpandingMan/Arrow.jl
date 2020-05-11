@@ -87,6 +87,7 @@ function juliatype(fp::FloatingPoint)
         throw(InvalidMetadataError("$fp is not valid arrow type metadata"))
     end
 end
+juliatype(::Null) = Missing
 
 isnullabletype(::Type{T}) where {T} = T <: Union{S,Missing} where {S}
 

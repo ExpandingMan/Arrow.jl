@@ -2,6 +2,31 @@
 const DefaultOffset = Int32
 
 #============================================================================================
+    \start{BitVector}
+
+    NOTE: this shadows a name from `Base`, but it's rarely enough use that we'll just
+    live with it.
+============================================================================================#
+struct BitVector{V<:AbstractVector{UInt8}} <: ArrowVector{Bool}
+    values::V
+    ℓ::Int
+end
+
+Base.size(p::BitVector) = (p.ℓ,)
+function Base.getindex(p::BitVector, i::Integer)
+    @boundscheck checkbounds(p, i)
+    @inbounds getbit(values(p), i)
+end
+function Base.setindex!(p::BitVector, v, i::Integer)
+    @boundscheck checkbounds(p, i)
+    @inbounds setbit!(values(p), convert(Bool, v), i)
+    v
+end
+#============================================================================================
+    \end{BitVector}
+============================================================================================#
+
+#============================================================================================
     \begin{List}
 ============================================================================================#
 # note that T = eltype(eltype(l))
@@ -24,9 +49,9 @@ Base.getindex(l::List, i::Integer) = values(l)[offset1_range(l, i)]
     NOTE: we don't constraint the values type `V` more because sometimes `T` is passed
     as `Vector{Union{S,Missing}}` and the eltype of `V` is `Vector{S}`.
 ============================================================================================#
-struct NullableVector{T,V<:AbstractVector} <: ArrowVector{Union{T,Missing}}
+struct NullableVector{T,M<:AbstractVector{Bool},V<:AbstractVector} <: ArrowVector{Union{T,Missing}}
+    bitmask::M
     values::V
-    bitmask::BitPrimitive
 end
 
 unmasked(v::NullableVector) = v.values

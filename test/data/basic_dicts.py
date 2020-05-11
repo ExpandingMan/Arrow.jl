@@ -24,7 +24,7 @@ b = buf.to_pybytes()  # this is the buffer containing the full streaming format
 
 # schema_buffer = batch.schema.serialize().to_pybytes()
 
-f = open("testdata2.dat", "wb")
+f = open("basic_dicts.dat", "wb")
 f.write(b)
 f.close()
 

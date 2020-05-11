@@ -9,4 +9,4 @@ const A = Arrow
 
 using Arrow: build
 
-buf = read("data/deepnest.dat")
+buf = read("data/special_types.dat")

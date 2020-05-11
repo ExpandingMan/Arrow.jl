@@ -81,6 +81,8 @@ function buildnext!(::Type{T}, rb::RecordBatch) where {T}
     Primitive{T}(rb.buffer, bodystart(rb)+b.offset, b.length ÷ sizeof(T))
 end
 
+buildnext!(::Type{Missing}, rb::RecordBatch) = Fill(missing, getnode!(rb).length)
+
 function buildnext!(::typeof(offsets), rb::RecordBatch)
     n = getnode(rb)
     b = getbuffer!(rb)
@@ -109,14 +111,13 @@ function buildnext!(::typeof(bitmask), rb::RecordBatch)
     end
     n = getnode(rb)
     b = getbuffer!(rb)
-    BitPrimitive(Primitive{UInt8}(rb.buffer, bodystart(rb)+b.offset, b.length), n.length)
+    BitVector(Primitive{UInt8}(rb.buffer, bodystart(rb)+b.offset, b.length), n.length)
 end
 
 function buildnext!(::Type{Union{T,Missing}}, rb::RecordBatch) where {T}
     b = buildnext!(bitmask, rb)
     v = buildnext!(T, rb)
-    @bp
-    isnothing(b) ? v : NullableVector{T,typeof(v)}(v, b)
+    isnothing(b) ? v : NullableVector{T,typeof(b),typeof(v)}(b, v)
 end
 
 
@@ -363,7 +364,7 @@ function Table(batches::AbstractVector{<:AbstractBatch})
     end
     sch = first(batches).header
     cols = [Column(sch, i, batches[2:end]) for i ∈ 1:ncolumns(sch)]
-    setfirstcolumn!(first(cols))
+    isempty(cols) || setfirstcolumn!(first(cols))
     Table(sch, cols)
 end
 function Table(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
@@ -399,25 +400,26 @@ Tables.schema(t::Table) = Tables.Schema(name.(t.columns), julia_eltype.(t.column
 #============================================================================================
     \begin{build from schema field}
 ============================================================================================#
-const CONTAINER_TYPES = (primitive=Union{Meta.Int_,Meta.FloatingPoint},
-                         lists=Meta.List,
-                         strings=Meta.Utf8,
+const CONTAINER_TYPES = (primitive=Set((Meta.Int_,Meta.FloatingPoint,Meta.Null)),
+                         lists=Set((Meta.List,)),
+                         strings=Set((Meta.Utf8,)),
                         )
+
 
 # TODO incomplete
 function _julia_eltype(ϕ::Meta.Field)
-    if typeof(ϕ.dtype) <: CONTAINER_TYPES.primitive
+    if typeof(ϕ.dtype) ∈ CONTAINER_TYPES.primitive
         juliatype(ϕ.dtype)
-    elseif typeof(ϕ.dtype) <: CONTAINER_TYPES.strings
+    elseif typeof(ϕ.dtype) ∈ CONTAINER_TYPES.strings
         String
-    elseif typeof(ϕ.dtype) <: CONTAINER_TYPES.lists
+    elseif typeof(ϕ.dtype) ∈ CONTAINER_TYPES.lists
         Vector{julia_eltype(ϕ.children[1])}
     else
         throw(ArgumentError("unrecognized type $(ϕ.dtype)"))
     end
 end
 function _julia_eltype(ϕ::Meta.DictionaryEncoding)
-    if typeof(ϕ.indexType) <: CONTAINER_TYPES.primitive
+    if typeof(ϕ.indexType) ∈ CONTAINER_TYPES.primitive
         juliatype(ϕ.indexType)
     else
         throw(ArgumentError("invalid dictionary index type $(ϕ.indexType)"))

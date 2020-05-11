@@ -1,11 +1,10 @@
 import pyarrow as pa
 
 data = [
-        pa.array([ [[1,2], [3,4,5], [6]], [[8, 9]] ]),
-        pa.array([ [None, [1,2], [3,4]], None ])
+        pa.array([None, None, None, None, None])
         ]
 
-batch = pa.RecordBatch.from_arrays(data, ["col1", "col2"])
+batch = pa.RecordBatch.from_arrays(data, ["col1"])
 
 sink = pa.BufferOutputStream()
 
@@ -22,7 +21,7 @@ b = buf.to_pybytes()  # this is the buffer containing the full streaming format
 
 # schema_buffer = batch.schema.serialize().to_pybytes()
 
-f = open("deep_nesting.dat", "wb")
+f = open("special_types.dat", "wb")
 f.write(b)
 f.close()
 

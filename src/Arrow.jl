@@ -1,7 +1,7 @@
 module Arrow
 
 using Mmap
-using Tables, LazyArrays, CategoricalArrays
+using Tables, LazyArrays, FillArrays
 
 # TODO remove this when no longer being used
 using Debugger
@@ -29,7 +29,7 @@ values(A::ArrowVector) = A.values
 """
     bitmask(A)
 
-Gets the Arrow `BitPrimitive` array which contains the null bitmask of `A`.
+Gets the `Arrow.BitVector` array which contains the null bitmask of `A`.
 """
 bitmask(A::ArrowVector) = A.bitmask
 
@@ -81,6 +81,7 @@ include("structs_unions.jl")
 include("constructors.jl")
 include("deserialization.jl")
 include("serialization.jl")
+include("file.jl")
 
 
 end  # module Arrow
