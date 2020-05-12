@@ -90,6 +90,48 @@ Base.getindex(l::ConvertVector{T}, i::Integer) where {T} = arrowconvert(T, value
 ============================================================================================#
 
 #============================================================================================
+    \begin{Values}
+============================================================================================#
+struct Values{T,V<:AbstractVector} <: ArrowVector{T}
+    parent::V
+end
+
+Values(v::AbstractVector{<:AbstractVector{T}}) where {T} = Values{T,typeof(v)}(v)
+Values(v::AbstractVector) = Values{eltype(v),typeof(v)}(v)
+function Values(v::AbstractVector{<:Union{<:AbstractVector{T},Missing}}) where {T}
+    Values{T,typeof(v)}(v)
+end
+
+Base.parent(v::Values) = v.parent
+
+_value_length(::Type, ::Missing) = 1
+function _value_length(::Type{<:Values{T,<:AbstractVector{<:Union{<:AbstractVector,Missing}}}},
+                       ::Missing) where {T}
+    0
+end
+_value_length(::Type, x) = length(x)
+
+Base.size(v::Values) = (sum(_value_length.((typeof(v),), v.parent)),)
+
+# copied from LazyArrays.jl `vcat_getindex` method
+function Base.getindex(v::Values, i::Integer)
+    T = eltype(v)
+    κ = i
+    for A ∈ v.parent
+        n = _value_length(typeof(v), A)
+        κ ≤ n && return ismissing(A) ? A : convert(T,A[κ])::T
+        κ -= n
+    end
+    throw(BoundsError(v, i))
+end
+
+values(v::Values) = v
+values(v::AbstractVector) = Values(v)
+#============================================================================================
+    \end{Values}
+============================================================================================#
+
+#============================================================================================
     \begin{DictVector}
 ============================================================================================#
 struct DictVector{T,K<:AbstractVector,V<:AbstractVector} <: ArrowVector{T}

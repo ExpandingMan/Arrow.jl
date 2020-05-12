@@ -16,23 +16,48 @@ write!(io::IO, ::typeof(bitmask), v::AbstractVector) = (bitpack!(io, .!ismissing
 
 function write!(io::IO, ::typeof(offsets), v::AbstractVector)
     last = zero(DefaultOffset)
-    write(io, last)
+    s = write(io, last)
     for j ∈ 2:(length(v)+1)
         next = DefaultOffset(offlength(v[j-1]) + last)
-        write(io, next)
+        s += write(io, next)
         last = next
     end
-    io
+    p = paddinglength(s)
+    skip(io, p)
+    s + p
 end
 
+# TODO need to make sure we consistently catch the missings in the below
 
-# the below methods will determine the appropriate types
+write!(io::IO, ::typeof(values), v::AbstractVector) = write!(io, Primitive, v)
+function write!(io::IO, ::typeof(values), v::AbstractVector{Union{T,Missing}}) where {T}
+    s = 0
+    for x ∈ v
+        s += if ismissing(x)
+            skip(io, sizeof(eltype(v)))
+            sizeof(eltype(v))
+        else
+            write(io, x)
+        end
+    end
+    p = paddinglength(s)
+    skip(io, p)
+    s + p
+end
+write!(io::IO, ::typeof(values), v::AbstractVector{<:AbstractVector}) = write!(io, values(v))
+function write!(io::IO, ::typeof(values), v::AbstractVector{<:Union{AbstractVector,Missing}})
+    write!(io, bitmask, v) + write!(io, values(v))
+end
 
-write!(buf::BufferOrIO, v::AbstractVector) = write!(buf, Primitive, v)
-
-function write!(buf::BufferOrIO, v::AbstractVector{Union{T,Missing}}) where {T}
-    write!(buf, bitmask, v)
-    write!(buf, values, v)
+write!(io::IO, v::AbstractVector) = write!(io, values, v)
+function write!(io::IO, v::AbstractVector{Union{T,Missing}}) where {T}
+    write!(io, bitmask, v) + write!(io, values, v)
+end
+function write!(io::IO, v::AbstractVector{<:AbstractVector}) where {T}
+    write!(io, offsets, v) + write!(io, values, v)
+end
+function write!(io::IO, v::AbstractVector{<:AbstractString})
+    write!(io, offsets, v) + write!(io, values, codeunits.(v))
 end
 #======================================================================================================
     \end{data serialization}

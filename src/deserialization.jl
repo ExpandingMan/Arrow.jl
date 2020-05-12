@@ -285,6 +285,7 @@ function build(c::Column)
     else
         build(RecordBatch, c)
     end
+    # NOTE: creation of Vcat is pretty damn slow, so this may be a problem
     length(v) == 1 ? v[1] : Vcat(v...)
 end
 
