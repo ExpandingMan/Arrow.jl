@@ -1,65 +1,45 @@
-
-const DefaultOffset = Int32
-
-#============================================================================================
-    \start{BitVector}
-
-    NOTE: this shadows a name from `Base`, but it's rarely enough use that we'll just
-    live with it.
-============================================================================================#
-struct BitVector{V<:AbstractVector{UInt8}} <: ArrowVector{Bool}
-    values::V
-    ℓ::Int
-end
-
-Base.size(p::BitVector) = (p.ℓ,)
-function Base.getindex(p::BitVector, i::Integer)
-    @boundscheck checkbounds(p, i)
-    @inbounds getbit(values(p), i)
-end
-function Base.setindex!(p::BitVector, v, i::Integer)
-    @boundscheck checkbounds(p, i)
-    @inbounds setbit!(values(p), convert(Bool, v), i)
-    v
-end
-#============================================================================================
-    \end{BitVector}
-============================================================================================#
-
-#============================================================================================
-    \begin{List}
-============================================================================================#
-# note that T = eltype(eltype(l))
-struct List{T,V<:AbstractVector{T}} <: ArrowVector{Vector{T}}
-    values::V
-    offsets::Primitive{DefaultOffset}
-end
-
-unmasked(l::List) = l
-
-Base.size(l::List) = (length(offsets(l))-1,)
-Base.getindex(l::List, i::Integer) = values(l)[offset1_range(l, i)]
-#============================================================================================
-    \end{List}
-============================================================================================#
-
 #============================================================================================
     \begin{NullableVector}
-
-    NOTE: we don't constraint the values type `V` more because sometimes `T` is passed
-    as `Vector{Union{S,Missing}}` and the eltype of `V` is `Vector{S}`.
 ============================================================================================#
 struct NullableVector{T,M<:AbstractVector{Bool},V<:AbstractVector} <: ArrowVector{Union{T,Missing}}
     bitmask::M
     values::V
 end
 
-unmasked(v::NullableVector) = v.values
-offsets(v::NullableVector) = unmasked(v).offsets
+specifiedtype(::Type{T}) where {T} = T
+specifiedtype(::Type{Union{T,Unspecified}}) where {T} = T
 
-Base.size(v::NullableVector) = size(unmasked(v))
+function NullableVector(b::AbstractVector{Bool}, v::AbstractVector)
+    T = Union{specifiedtype(eltype(v)),Missing}
+    NullableVector{Union{T,Missing},typeof(b),typeof(v)}(b, v)
+end
+
+bitmask(v::NullableVector) = v.bitmask
+values(v::NullableVector) = v.values
+
+Base.size(v::NullableVector) = size(values(v))
 #============================================================================================
     \end{NullableVector}
+============================================================================================#
+
+#============================================================================================
+    \begin{List}
+============================================================================================#
+# note that T = eltype(eltype(l))
+struct List{T,O<:AbstractVector{<:Integer},V<:AbstractVector{T}} <: ArrowVector{Vector{T}}
+    offsets::O
+    values::V
+end
+
+List(o::AbstractVector, v::AbstractVector) = List{eltype(v),typeof(o),typeof(v)}(o, v)
+
+offsets(l::List) = l.offsets
+values(l::List) = l.values
+
+Base.size(l::List) = (length(offsets(l))-1,)
+Base.getindex(l::List, i::Integer) = values(l)[offset1_range(l, i)]
+#============================================================================================
+    \end{List}
 ============================================================================================#
 
 #============================================================================================
@@ -84,52 +64,27 @@ struct ConvertVector{T,V<:AbstractVector} <: ArrowVector{T}
 end
 
 Base.size(l::ConvertVector) = size(l.values)
-Base.getindex(l::ConvertVector{T}, i::Integer) where {T} = arrowconvert(T, values(l)[i])
+Base.getindex(l::ConvertVector{T}, i::Integer) where {T} = arrowconvert(T, l.values[i])
 #============================================================================================
     \end{ConvertVector}
 ============================================================================================#
 
 #============================================================================================
-    \begin{Values}
+    \begin{StructVector}
 ============================================================================================#
-struct Values{T,V<:AbstractVector} <: ArrowVector{T}
-    parent::V
+struct StructVector{T<:Tuple,N,V<:NTuple{N,ArrowVector}} <: ArrowVector{T}
+    values::V
 end
 
-Values(v::AbstractVector{<:AbstractVector{T}}) where {T} = Values{T,typeof(v)}(v)
-Values(v::AbstractVector) = Values{eltype(v),typeof(v)}(v)
-function Values(v::AbstractVector{<:Union{<:AbstractVector{T},Missing}}) where {T}
-    Values{T,typeof(v)}(v)
+# NOTE: we assume that all components have the same length
+Base.size(s::StructVector) = size(first(values(s)))
+function Base.getindex(s::StructVector{T,N}, i::Integer)::T where {T,N}
+    ntuple(n -> values(s)[n][i], N)
 end
-
-Base.parent(v::Values) = v.parent
-
-_value_length(::Type, ::Missing) = 1
-function _value_length(::Type{<:Values{T,<:AbstractVector{<:Union{<:AbstractVector,Missing}}}},
-                       ::Missing) where {T}
-    0
-end
-_value_length(::Type, x) = length(x)
-
-Base.size(v::Values) = (sum(_value_length.((typeof(v),), v.parent)),)
-
-# copied from LazyArrays.jl `vcat_getindex` method
-function Base.getindex(v::Values, i::Integer)
-    T = eltype(v)
-    κ = i
-    for A ∈ v.parent
-        n = _value_length(typeof(v), A)
-        κ ≤ n && return ismissing(A) ? A : convert(T,A[κ])::T
-        κ -= n
-    end
-    throw(BoundsError(v, i))
-end
-
-values(v::Values) = v
-values(v::AbstractVector) = Values(v)
 #============================================================================================
-    \end{Values}
+    \end{StructVector}
 ============================================================================================#
+
 
 #============================================================================================
     \begin{DictVector}

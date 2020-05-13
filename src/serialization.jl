@@ -50,13 +50,13 @@ function write!(io::IO, ::typeof(values), v::AbstractVector{<:Union{AbstractVect
 end
 
 write!(io::IO, v::AbstractVector) = write!(io, values, v)
-function write!(io::IO, v::AbstractVector{Union{T,Missing}}) where {T}
+function write!(io::IO, v::AbstractVector{Types.Nullable{T}}) where {T}
     write!(io, bitmask, v) + write!(io, values, v)
 end
-function write!(io::IO, v::AbstractVector{<:AbstractVector}) where {T}
+function write!(io::IO, v::AbstractVector{<:Types.List})
     write!(io, offsets, v) + write!(io, values, v)
 end
-function write!(io::IO, v::AbstractVector{<:AbstractString})
+function write!(io::IO, v::AbstractVector{<:Types.Strings})
     write!(io, offsets, v) + write!(io, values, codeunits.(v))
 end
 #======================================================================================================

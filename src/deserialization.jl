@@ -90,14 +90,14 @@ function buildnext!(::typeof(offsets), rb::RecordBatch)
 end
 
 # NOTE: first node gets skipped only for strings for some unholy reason
-function buildnext!(::Type{<:AbstractVector{T}}, rb::RecordBatch, skipnode::Bool=true) where {T}
+function buildnext!(::Type{<:Types.List{T}}, rb::RecordBatch, skipnode::Bool=true) where {T}
     o = buildnext!(offsets, rb)
     skipnode && getnode!(rb)
     v = buildnext!(T, rb)
-    List{eltype(v),typeof(v)}(v, o)
+    List(o, v)
 end
 
-function buildnext!(::Type{String}, rb::RecordBatch)
+function buildnext!(::Type{<:Types.Strings}, rb::RecordBatch)
     l = buildnext!(Vector{UInt8}, rb, false)
     ConvertVector{String,typeof(l)}(l)
 end

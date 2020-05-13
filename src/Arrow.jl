@@ -19,46 +19,33 @@ const BufferOrIO = Union{IO,AbstractVector{UInt8}}
 abstract type ArrowVector{T} <: AbstractVector{T} end
 
 
-"""
-    values(A)
+struct Unspecified end
+const unspecified = Unspecified()
 
-Gets the Arrow `Primitive` array which contains the values of `A`.
-"""
-values(A::ArrowVector) = A.values
+const DefaultOffset = Int32
 
-"""
-    bitmask(A)
-
-Gets the `Arrow.BitVector` array which contains the null bitmask of `A`.
-"""
-bitmask(A::ArrowVector) = A.bitmask
-
-"""
-    offsets(A)
-
-Gets the Arrow `Primitive` array which contains the offsets of `A`.
-"""
-offsets(A::ArrowVector) = A.offsets
-
-"""
-    unmasked(A)
-
-Gets the values prior to the application of the bitmask.
-"""
-unmasked(A::ArrowVector) = values(A)
-
-offset(A::ArrowVector, i::Integer) = offsets(unmasked(A))[i]
-offset_range(A::ArrowVector, i::Integer) = offset(unmasked(A), i):offset(unmasked(A), i+1)
-function offset1_range(A::ArrowVector, i::Integer)
-    (offset(unmasked(A), i)+1):offset(unmasked(A), i+1)
+module Types
+    const Values = Any
+    const Nullable{T} = Union{T,Missing}
+    const List{T} = AbstractVector{T}
+    const Null = Missing
+    const Strings = AbstractString
 end
 
-Base.size(p::ArrowVector) = size(unmasked(p))
+components(::Type{<:Types.Values}) = (values,)
+components(::Type{Types.Nullable{T}}) where {T} = (bitmask, values)
+components(::Type{<:Types.List}) = (offsets, values)
+components(::Type{<:Types.Null}) = tuple()
+components(::Type{<:Types.Strings}) = (offsets, values)
+
+components(::Type{Type}, ::Type{<:AbstractVector{T}}) where {T} = components(T)
+components(::AbstractVector{T}) where {T} = components(T)
+
 
 # TODO ideally views of arrow views would be other arrow views, and not SubArray
 
 function Base.getindex(p::ArrowVector{Union{T,Missing}}, i::Integer) where {T}
-    bitmask(p)[i] ? @inbounds(unmasked(p)[i]) : missing
+    bitmask(p)[i] ? @inbounds(values(p)[i]) : missing
 end
 
 function Base.setindex!(p::ArrowVector{Union{T,Missing}}, ::Missing, i::Integer) where {T}
@@ -67,21 +54,58 @@ function Base.setindex!(p::ArrowVector{Union{T,Missing}}, ::Missing, i::Integer)
 end
 function Base.setindex!(p::ArrowVector{Union{T,Missing}}, v, i::Integer) where {T}
     bitmask(p)[i] = true  # bounds checking done here only
-    @inbounds unmasked(p)[i] = convert(T, v)
+    @inbounds values(p)[i] = convert(T, v)
     v
 end
 
 include("metadata/Metadata.jl")
 using .Metadata; const Meta = Metadata
 
+
+#============================================================================================
+    \start{BitVector}
+
+    NOTE: this shadows a name from `Base`, but it's rarely enough use that we'll just
+    live with it.
+============================================================================================#
+struct BitVector{V<:AbstractVector{UInt8}} <: ArrowVector{Bool}
+    values::V
+    ℓ::Int
+end
+
+values(v::BitVector) = v.values
+
+Base.size(p::BitVector) = (p.ℓ,)
+function Base.getindex(p::BitVector, i::Integer)
+    @boundscheck checkbounds(p, i)
+    @inbounds getbit(values(p), i)
+end
+function Base.setindex!(p::BitVector, v, i::Integer)
+    @boundscheck checkbounds(p, i)
+    @inbounds setbit!(values(p), convert(Bool, v), i)
+    v
+end
+#============================================================================================
+    \end{BitVector}
+============================================================================================#
+
+
 include("utils.jl")
 include("primitives.jl")
+include("components.jl")
 include("wrappers.jl")
-include("structs_unions.jl")
-include("constructors.jl")
 include("deserialization.jl")
 include("serialization.jl")
 include("file.jl")
+
+
+# these should more or less already be of this form
+compose(v::ArrowVector) = v
+
+compose(v::AbstractVector) = v
+compose(v::AbstractVector{Types.Nullable{T}}) where {T} = NullableVector(bitmask(v),
+                                                                         compose(values(v)))
+compose(v::AbstractVector{<:Types.List}) = List(offsets(v), compose(values(v)))
 
 
 end  # module Arrow

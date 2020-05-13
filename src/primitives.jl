@@ -3,6 +3,9 @@ abstract type AbstractPrimitive{T} <: ArrowVector{T} end
 
 #============================================================================================
     \begin{Primitive}
+
+    NOTE: Ideally these would be replaced by some sort of reinterpret view from base
+    but so far can't quite get the performance out of those that we want.
 ============================================================================================#
 struct Primitive{T} <: AbstractPrimitive{T}
     buffer::Vector{UInt8}
