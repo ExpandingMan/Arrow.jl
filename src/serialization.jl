@@ -1,77 +1,38 @@
 
-# NOTE: a lot of this is slow right now, but 1.5 should drastically speed things up because
-# of all the allocations from views
-
 #======================================================================================================
     \begin{data serialization}
 ======================================================================================================#
-write!(io::IO, ::Type{Primitive}, v::AbstractVector) = writepadded(io, v)
-
-function write!(io::IO, ::Type{BitVector}, v::AbstractVector)
-    bitpack!(io, v)
-    bitpackedbytes(length(v))
-end
-
-write!(io::IO, ::typeof(bitmask), v::AbstractVector) = (bitpack!(io, .!ismissing.(v)); io)
-
-function write!(io::IO, ::typeof(offsets), v::AbstractVector)
-    last = zero(DefaultOffset)
-    s = write(io, last)
-    for j ∈ 2:(length(v)+1)
-        next = DefaultOffset(offlength(v[j-1]) + last)
-        s += write(io, next)
-        last = next
-    end
-    p = paddinglength(s)
-    skip(io, p)
-    s + p
-end
-
-# TODO need to make sure we consistently catch the missings in the below
-
-write!(io::IO, ::typeof(values), v::AbstractVector) = write!(io, Primitive, v)
-function write!(io::IO, ::typeof(values), v::AbstractVector{Union{T,Missing}}) where {T}
+write!(io::IO, v::AbstractVector) = writepadded(io, v)
+function write!(io::IO, v::AbstractVector{Union{T,Unspecified}}) where {T}
     s = 0
     for x ∈ v
-        s += if ismissing(x)
-            skip(io, sizeof(eltype(v)))
-            sizeof(eltype(v))
+        s += if x ≡ unspecified
+            skip(io, sizeof(T)); sizeof(T)
         else
             write(io, x)
         end
     end
-    p = paddinglength(s)
-    skip(io, p)
-    s + p
-end
-write!(io::IO, ::typeof(values), v::AbstractVector{<:AbstractVector}) = write!(io, values(v))
-function write!(io::IO, ::typeof(values), v::AbstractVector{<:Union{AbstractVector,Missing}})
-    write!(io, bitmask, v) + write!(io, values(v))
-end
-
-write!(io::IO, v::AbstractVector) = write!(io, values, v)
-function write!(io::IO, v::AbstractVector{Types.Nullable{T}}) where {T}
-    write!(io, bitmask, v) + write!(io, values, v)
-end
-function write!(io::IO, v::AbstractVector{<:Types.List})
-    write!(io, offsets, v) + write!(io, values, v)
-end
-function write!(io::IO, v::AbstractVector{<:Types.Strings})
-    write!(io, offsets, v) + write!(io, values, codeunits.(v))
+    skip(io, paddinglength(s))
+    s + paddinglength(s)
 end
 #======================================================================================================
     \end{data serialization}
 ======================================================================================================#
 
 #======================================================================================================
-    \begin{arrow format for individual vectors}
+    \begin{column meta}
 ======================================================================================================#
-arrow(v::AbstractVector) = Primitive(v)
-arrow(v::AbstractVector{Bool}) = BitVector(v)
-#======================================================================================================
-    \end{arrow format for individual vectors}
-======================================================================================================#
+function Meta.Field(name::ColumnName, v::AbstractVector; custom_metadata=Dict())
+    Meta.Field(name, eltype(v); custom_metadata=custom_metadata)
+end
 
+newcolumn(ϕ::Meta.Field) = Column(ϕ, Vector{AbstractBatch}(undef, 0))
+function newcolumn(name::ColumnName, v::AbstractVector; custom_metadata=Dict())
+    newcolumn(Meta.Field(name, v, custom_metadata=custom_metadata))
+end
+#======================================================================================================
+    \end{column meta}
+======================================================================================================#
 
 #======================================================================================================
     \begin{schemas}

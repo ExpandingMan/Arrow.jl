@@ -31,11 +31,11 @@ function Field(name::Union{AbstractString,Symbol}, ::Type{T};
     Field(string(name), isnullabletype(T), FB.typeorder(DType, typeof(arrowtype(T))),
           arrowtype(T), dictionary,
           child == nothing ? [] : [childfield(T)],
-          [KeyValue(kv) for kv ∈ custom_metadata])
+          [KeyValue(kv) for kv ∈ pairs(custom_metadata)])
 end
 
-KeyValue(p::Pair{Union{AbstractString,Symbol},Union{AbstractString,Symbol}}) = KeyValue(string(p[1]),
-                                                                                        string(p[2]))
+KeyValue(p::Pair{<:Union{AbstractString,Symbol},<:Union{AbstractString,Symbol}}) = KeyValue(string(p[1]),
+                                                                                            string(p[2]))
 #=======================================================================================================
     \end{additional constructors}
 =======================================================================================================#

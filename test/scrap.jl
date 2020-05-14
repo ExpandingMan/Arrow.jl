@@ -9,4 +9,7 @@ const A = Arrow
 
 using Arrow: build
 
-buf = read("data/special_types.dat")
+buf = read("data/basic_stream.dat")
+
+t = Arrow.Table(buf)
+df = DataFrame(t, copycols=false)
