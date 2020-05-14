@@ -18,11 +18,9 @@ since Arrow requires 8-byte boundary alignment.
 """
 function writepadded(io::IO, x)
     bw = write(io, x)
-    δ = padding(bw) - bw
-    for i ∈ 1:δ
-        bw += write(io, 0x00)
-    end
-    bw
+    δ = paddinglength(bw)
+    skip(io, δ)
+    bw + δ
 end
 
 

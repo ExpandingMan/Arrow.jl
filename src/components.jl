@@ -48,46 +48,14 @@ end
 values(v::AbstractVector) = v
 values(v::AbstractVector{Types.Nullable{T}}) where {T} = Values(v)
 values(v::AbstractVector{<:AbstractVector}) = Values(v)
-#====================================================================================================
-    \end{Values}
-====================================================================================================#
-
-#============================================================================================
-    \begin{Primitive Constructors}
-
-    TODO get rid of most of this?
-============================================================================================#
-function Primitive!(buf::Vector{UInt8}, v::AbstractVector, i::Integer=1)
-    write!(view(buf, i:lastindex(buf)), Primitive, v)
-    Primitive{eltype(v)}(buf, i, length(v))
-end
-function Primitive(v::AbstractVector, i::Integer=1)
-    Primitive!(Vector{UInt8}(undef, length(v)*sizeof(eltype(v))+i-1), v, i)
-end
 
 function valuesbytes(v::AbstractVector{T}; pad::Bool=true) where {T}
     n = length(v)*sizeof(T)
     pad ? padding(n) : n
 end
-#============================================================================================
-    \end{Primitive Constructors}
-============================================================================================#
-
-#============================================================================================
-    \begin{BitVector Constructors}
-
-    TODO do we need this?
-============================================================================================#
-function BitVector!(buf::Vector{UInt8}, v::AbstractVector{Bool}, i::Integer=1)
-    write!(view(buf, i:lastindex(buf)), BitVector, v)
-    BitVector(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
-end
-function BitVector(v::AbstractVector{Bool})
-    BitVector!(Vector{UInt8}(undef, bitpackedbytes(length(v))), v)
-end
-#============================================================================================
-    \end{BitVector Constructors}
-============================================================================================#
+#====================================================================================================
+    \end{Values}
+====================================================================================================#
 
 #============================================================================================
     \begin{bitmasks}
@@ -107,12 +75,6 @@ bitmask(v::AbstractVector) = BitMask(v)
 
 bitmaskbytes(n::Integer; pad::Bool=true) = bitpackedbytes(n, pad)
 bitmaskbytes(v::AbstractVector; pad::Bool=true) = bitmaskbytes(length(v), pad=pad)
-
-# TODO probably want to get rid of this
-function bitmask!(buf::Vector{UInt8}, v::AbstractVector, i::Integer=1)
-    write!(view(buf, i:lastindex(buf)), bitmask, v)
-    BitVector(Primitive{UInt8}(buf, i, bitpackedbytes(length(v), false)), length(v))
-end
 #============================================================================================
     \end{bitmasks}
 ============================================================================================#
