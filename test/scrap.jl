@@ -13,3 +13,8 @@ buf = read("data/basic_stream.dat")
 
 t = Arrow.Table(buf)
 df = DataFrame(t, copycols=false)
+
+c = Arrow.column(t, 3)
+rb = c.batches[1]
+
+

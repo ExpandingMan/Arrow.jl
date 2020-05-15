@@ -59,9 +59,12 @@ Note that for strings, this calls `String` which steals the data in the provided
 arrowconvert(::Type, ::Missing) = missing
 arrowconvert(::Type{<:Union{String,Missing}}, x::AbstractVector{UInt8}) = String(x)
 
+# WARNING: have to be very careful using this because right now this steals strings
 struct ConvertVector{T,V<:AbstractVector} <: ArrowVector{T}
     values::V
 end
+
+ConvertVector{T}(v::AbstractVector) where {T} = ConvertVector{T,typeof(v)}(v)
 
 Base.size(l::ConvertVector) = size(l.values)
 Base.getindex(l::ConvertVector{T}, i::Integer) where {T} = arrowconvert(T, l.values[i])

@@ -1,36 +1,52 @@
 
+# TODO we don't have deserialization from IO streams yet
+
+#======================================================================================================
+    \begin{general batches}
+======================================================================================================#
 abstract type AbstractBatch end
 
 bodystart(b::AbstractBatch) = b.body_start
 bodylength(b::AbstractBatch) = b.body_length
 bodyend(b::AbstractBatch) = bodystart(b) + bodylength(b) - 1
 
-hasbody(::AbstractBatch) = true
-
 reset!(b::AbstractBatch) = b
 
-struct EmptyBatch{H} <: AbstractBatch
+struct EmptyBatch{H,B<:BufferOrIO} <: AbstractBatch
     header::H
 
     # this is kept only to keep track of location in the buffer
+    buffer::B
     body_start::Int
     body_length::Int
 end
 
-batch(m, blen::Integer, buf::Vector{UInt8}, i::Integer) = EmptyBatch(m, i, blen)
+batch(m, blen::Integer, buf::Vector{UInt8}, i::Integer) = EmptyBatch(m, buf, i, blen)
 
-hasbody(::EmptyBatch) = false
+batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer) = batch(m.header, m.bodyLength, buf, i)
+#======================================================================================================
+    \end{general batches}
+======================================================================================================#
 
-
-mutable struct RecordBatch <: AbstractBatch
+#======================================================================================================
+    \begin{RecordBatch}
+======================================================================================================#
+mutable struct RecordBatch{B<:BufferOrIO} <: AbstractBatch
     header::Meta.RecordBatch
 
-    buffer::Vector{UInt8}
+    buffer::B
     body_start::Int
     body_length::Int
 
     node_idx::Int
     buf_idx::Int
+end
+
+function RecordBatch(m::Meta.RecordBatch, blen::Integer, buf::Vector{UInt8}, i::Integer)
+    RecordBatch(m, buf, i, blen, 1, 1)
+end
+function RecordBatch(m::Meta.RecordBatch, io::IO, blen::Integer=0, i::Integer=position(io)+1)
+    RecordBatch(m, io, i, blen, 1, 1)
 end
 
 setnodeindex!(rb::RecordBatch, idx::Integer=1) = (rb.node_idx = idx)
@@ -41,9 +57,6 @@ getbufferindex(rb::RecordBatch) = rb.buf_idx
 
 reset!(rb::RecordBatch) = (setnodeindex!(rb); setbufferindex!(rb); rb)
 
-function RecordBatch(m::Meta.RecordBatch, blen::Integer, buf::Vector{UInt8}, i::Integer)
-    RecordBatch(m, buf, i, blen, 1, 1)
-end
 batch(m::Meta.RecordBatch, blen::Integer, buf::Vector{UInt8}, i::Integer) = RecordBatch(m, blen, buf, i)
 
 nnodes(rb::RecordBatch) = length(rb.header.nodes)
@@ -99,7 +112,7 @@ end
 
 function buildnext!(::Type{<:Types.Strings}, rb::RecordBatch)
     l = buildnext!(Vector{UInt8}, rb, false)
-    ConvertVector{String,typeof(l)}(l)
+    ConvertVector{String}(l)
 end
 
 # the below does not increment the node
@@ -120,12 +133,29 @@ function buildnext!(::Type{Union{T,Missing}}, rb::RecordBatch) where {T}
     isnothing(b) ? v : NullableVector{T,typeof(b),typeof(v)}(b, v)
 end
 
+function build(ϕ::Meta.Field, rb::RecordBatch)
+    T = isnothing(ϕ.dictionary) ? juliatype(ϕ) : julia_keytype(ϕ)
+    build(T, ϕ, rb)
+end
 
-mutable struct DictionaryBatch <: AbstractBatch
+build(::Type{AbstractVector{T}}, ϕ::Meta.Field, rb::RecordBatch) where{T} = buildnext!(T, rb)
+
+function build(ϕ::Meta.Field, rb::Meta.RecordBatch, buf::Vector{UInt8}, node_idx::Integer=1,
+               buf_idx::Integer=1, i::Integer=1)
+    build(juliatype(ϕ), rb, buf, node_idx, buf_idx, i)
+end
+#======================================================================================================
+    \end{RecordBatch}
+======================================================================================================#
+
+#======================================================================================================
+    \begin{DictionaryBatch}
+======================================================================================================#
+mutable struct DictionaryBatch{B<:BufferOrIO} <: AbstractBatch
     header::Meta.DictionaryBatch
     record_batch::RecordBatch
 
-    buffer::Vector{UInt8}
+    buffer::B
     body_start::Int
     body_length::Int
 end
@@ -160,8 +190,19 @@ getbuffer(db::DictionaryBatch, idx=db.record_batch.buf_idx) = getbuffer(db.recor
 getnode!(db::DictionaryBatch) = getnode!(db.record_batch)
 getbuffer!(db::DictionaryBatch) = getbuffer!(db.record_batch)
 
-batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer) = batch(m.header, m.bodyLength, buf, i)
+build(ϕ::Meta.Field, db::DictionaryBatch) = build(juliatype(ϕ), ϕ, db.record_batch)
 
+function build(ϕ::Meta.Field, rb::Meta.DictionaryBatch, buf::Vector{UInt8},
+               node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
+    build(juliatype(ϕ), rb.data, buf, node_idx, buf_idx, i)
+end
+#======================================================================================================
+    \end{DictionaryBatch}
+======================================================================================================#
+
+#======================================================================================================
+    \begin{reading into memory}
+======================================================================================================#
 """
     readmessage_length(io)
 
@@ -205,12 +246,53 @@ function batch(io::IO, dataio::IO=io, data_skip::Integer=0)
     batch(m, databuf, 1)
 end
 
+"""
+    readbatches
 
+Read all batches from a buffer or IO stream.  The reading will be attempted sequentially and
+will terminate when the end of the stream or buffer or a `0` length specifier is encountered.
+"""
+function readbatches(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
+                     i::AbstractVector{<:Integer}=fill(-1, length(rf)),
+                     databuf::Vector{UInt8}=buf)
+    batches = Vector{AbstractBatch}(undef, length(rf))
+    for j ∈ 1:length(rf)
+        batches[j] = batch(buf, rf[j], i[j], databuf)
+    end
+    batches
+end
+function readbatches(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int))
+    batches = Vector{AbstractBatch}(undef, 0)
+    while length(batches) < max_batches
+        b = batch(buf, rf)
+        b == nothing && break
+        push!(batches, b)
+        rf = bodyend(b) + 1
+    end
+    batches
+end
+function readbatches(io::IO, dataio::IO=io, data_skip::Integer=0,
+                     max_batches::Integer=typemax(Int))
+    batches = Vector{AbstractBatch}(undef, 0)
+    while length(batches) < max_batches
+        b = batch(io, dataio, data_skip)
+        b == nothing && break
+        push!(batches, b)
+    end
+    batches
+end
+#======================================================================================================
+    \end{reading into memory}
+======================================================================================================#
+
+#======================================================================================================
+    \begin{Column}
+======================================================================================================#
 mutable struct Column
     header::Meta.Field
     batches::Vector{AbstractBatch}
-    node_idx::Vector{Union{Int,Nothing}}  # start position of nodes
-    buf_idx::Vector{Union{Int,Nothing}}  # start position of buffers
+    node_start_idx::Vector{Union{Int,Nothing}}  # start position of nodes
+    buf_start_idx::Vector{Union{Int,Nothing}}  # start position of buffers
 end
 
 Meta.juliatype(c::Column) = Meta.juliatype(c.header)
@@ -244,8 +326,8 @@ end
 Sets the indices appropriate for the first column in a schema.
 """
 function setfirstcolumn!(c::Column)
-    c.node_idx = fill(1, length(c.batches))
-    c.buf_idx = fill(1, length(c.batches))
+    c.node_start_idx = fill(1, length(c.batches))
+    c.buf_start_idx = fill(1, length(c.batches))
     c
 end
 
@@ -290,60 +372,21 @@ function build(c::Column)
 end
 
 function build(c::Column, i::Integer)
-    n, b = c.node_idx[i], c.buf_idx[i]
+    n, b = c.node_start_idx[i], c.buf_start_idx[i]
     if isnothing(n) || isnothing(b)
         throw(ErrorException("tried to build uninitialized column `$(name(c))`"))
     end
-    setnodeindex!(c.batches[i], c.node_idx[i])
-    setbufferindex!(c.batches[i], c.buf_idx[i])
+    setnodeindex!(c.batches[i], c.node_start_idx[i])
+    setbufferindex!(c.batches[i], c.buf_start_idx[i])
     build(c.header, c.batches[i])
 end
+#======================================================================================================
+    \end{Column}
+======================================================================================================#
 
-function build(ϕ::Meta.Field, rb::RecordBatch)
-    T = isnothing(ϕ.dictionary) ? juliatype(ϕ) : julia_keytype(ϕ)
-    build(T, ϕ, rb)
-end
-build(ϕ::Meta.Field, db::DictionaryBatch) = build(juliatype(ϕ), ϕ, db.record_batch)
-build(::Type{AbstractVector{T}}, ϕ::Meta.Field, rb::RecordBatch) where{T} = buildnext!(T, rb)
-
-"""
-    readbatches
-
-Read all batches from a buffer or IO stream.  The reading will be attempted sequentially and
-will terminate when the end of the stream or buffer or a `0` length specifier is encountered.
-"""
-function readbatches(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
-                     i::AbstractVector{<:Integer}=fill(-1, length(rf)),
-                     databuf::Vector{UInt8}=buf)
-    batches = Vector{AbstractBatch}(undef, length(rf))
-    for j ∈ 1:length(rf)
-        batches[j] = batch(buf, rf[j], i[j], databuf)
-    end
-    batches
-end
-function readbatches(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int))
-    batches = Vector{AbstractBatch}(undef, 0)
-    while length(batches) < max_batches
-        b = batch(buf, rf)
-        b == nothing && break
-        push!(batches, b)
-        rf = bodyend(b) + 1
-    end
-    batches
-end
-function readbatches(io::IO, dataio::IO=io, data_skip::Integer=0,
-                     max_batches::Integer=typemax(Int))
-    batches = Vector{AbstractBatch}(undef, 0)
-    while length(batches) < max_batches
-        b = batch(io, dataio, data_skip)
-        b == nothing && break
-        push!(batches, b)
-    end
-    batches
-end
-
-
-# TODO not settled on name of this yet
+#======================================================================================================
+    \begin{Table}
+======================================================================================================#
 struct Table
     header::Meta.Schema
     columns::Vector{Column}
@@ -383,8 +426,8 @@ end
 function build(t::Table, i::Integer)
     p = build(t.columns[i])
     if i < ncolumns(t)
-        t.columns[i+1].node_idx = getnodeindices(t.columns[i])
-        t.columns[i+1].buf_idx = getbufferindices(t.columns[i])
+        t.columns[i+1].node_start_idx = getnodeindices(t.columns[i])
+        t.columns[i+1].buf_start_idx = getbufferindices(t.columns[i])
     end
     p
 end
@@ -397,10 +440,13 @@ Tables.columnaccess(::Table) = true
 Tables.columns(t::Table) = build(t)
 
 Tables.schema(t::Table) = Tables.Schema(name.(t.columns), julia_eltype.(t.columns))
+#======================================================================================================
+    \end{Table}
+======================================================================================================#
 
-#============================================================================================
-    \begin{build from schema field}
-============================================================================================#
+#======================================================================================================
+    \begin{inferring schema}
+======================================================================================================#
 const CONTAINER_TYPES = (primitive=Set((Meta.Int_,Meta.FloatingPoint,Meta.Null)),
                          lists=Set((Meta.List,)),
                          strings=Set((Meta.Utf8,)),
@@ -455,21 +501,6 @@ function julia_keytype(ϕ::Meta.Field)
         AbstractVector{_julia_eltype(ϕ.dictionary)}
     end
 end
-
-"""
-    build
-
-This function takes as its arguments Arrow metadata, which it then uses to call other methods
-(with Julia metadata) for constructing arrays.
-"""
-function build(ϕ::Meta.Field, rb::Meta.RecordBatch, buf::Vector{UInt8}, node_idx::Integer=1,
-               buf_idx::Integer=1, i::Integer=1)
-    build(juliatype(ϕ), rb, buf, node_idx, buf_idx, i)
-end
-function build(ϕ::Meta.Field, rb::Meta.DictionaryBatch, buf::Vector{UInt8},
-               node_idx::Integer=1, buf_idx::Integer=1, i::Integer=1)
-    build(juliatype(ϕ), rb.data, buf, node_idx, buf_idx, i)
-end
-#============================================================================================
-    \end{build from schema field}
-============================================================================================#
+#======================================================================================================
+    \end{inferring schema}
+======================================================================================================#

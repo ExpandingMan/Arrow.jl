@@ -23,6 +23,12 @@ function childfield(::Type{T};
     Field(string(name), t, dictionary=dictionary, custom_metadata=custom_metadata)
 end
 
+function RecordBatch(l::Integer,
+                     nodes::AbstractVector{FieldNode}=Vector{FieldNode}(undef,0),
+                     bufs::AbstractVector{Buffer}=Vector{Buffer}(undef,0))
+    Meta.RecordBatch(l, nodes, bufs, nothing)
+end
+
 # TODO will need more arguments for more complicated types
 function Field(name::Union{AbstractString,Symbol}, ::Type{T};
                dictionary::Union{DictionaryEncoding,Nothing}=nothing,

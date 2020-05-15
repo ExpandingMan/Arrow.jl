@@ -47,7 +47,11 @@ end
 
 values(v::AbstractVector) = v
 values(v::AbstractVector{Types.Nullable{T}}) where {T} = Values(v)
-values(v::AbstractVector{<:AbstractVector}) = Values(v)
+values(v::AbstractVector{<:Types.List}) = Values(v)
+values(v::AbstractVector{<:Types.Strings}) = Values(codeunits.(v))
+function values(v::AbstractVector{Types.Nullable{T}}) where {T<:Types.Strings}
+    Values((s -> ismissing(s) ? missing : codeunits(s)).(v))
+end
 
 function valuesbytes(v::AbstractVector{T}; pad::Bool=true) where {T}
     n = length(v)*sizeof(T)
@@ -66,15 +70,11 @@ struct BitMask{V<:AbstractVector} <: ArrowVector{Bool}
     values::V
 end
 
-Base.IndexLinear(::Type{<:BitMask}) = IndexLinear()
 Base.size(b::BitMask) = size(b.values)
 
 Base.getindex(b::BitMask, i::Integer) = !ismissing(b.values[i])
 
 bitmask(v::AbstractVector) = BitMask(v)
-
-bitmaskbytes(n::Integer; pad::Bool=true) = bitpackedbytes(n, pad)
-bitmaskbytes(v::AbstractVector; pad::Bool=true) = bitmaskbytes(length(v), pad=pad)
 #============================================================================================
     \end{bitmasks}
 ============================================================================================#
@@ -98,7 +98,6 @@ end
 
 Offsets(v::AbstractVector) = Offsets{DefaultOffset,typeof(v)}(v)
 
-Base.IndexStyle(::Type{<:Offsets}) = IndexLinear()
 Base.size(o::Offsets) = (length(o.values)+1,)
 
 function Base.getindex(o::Offsets{T}, i::Integer) where {T}
@@ -122,7 +121,7 @@ offsetsbytes(v::AbstractVector; pad::Bool=true) = offsetsbytes(length(v), pad=pa
 
 offsets(v::AbstractVector) = Offsets(v)
 
-# NOTE: the below is of course slow if your offsets are lazy
+# NOTE: the below is pretty slow... will it be better in 1.5?
 offset(A::ArrowVector, i::Integer) = offsets(A)[i]
 offset_range(A::ArrowVector, i::Integer) = offset(A, i):offset(A, i+1)
 function offset1_range(A::ArrowVector, i::Integer)
@@ -130,4 +129,15 @@ function offset1_range(A::ArrowVector, i::Integer)
 end
 #============================================================================================
     \end{offsets}
+============================================================================================#
+
+#============================================================================================
+    \begin{counting bytes}
+
+    NOTE: these are only intended to be called on bits data as it's being written
+============================================================================================#
+nbytes(v::AbstractVector{Bool}) = bitpackedbytes(length(v))
+nbytes(v::AbstractVector) = length(v)*sizeof(eltype(v))
+#============================================================================================
+    \end{counting bytes}
 ============================================================================================#

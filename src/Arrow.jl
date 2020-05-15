@@ -95,6 +95,8 @@ end
 Base.iterate(ci::ComponentIterator, ::Nothing) = nothing
 
 
+Base.IndexStyle(::Type{<:ArrowVector}) = IndexLinear()
+
 function Base.getindex(p::ArrowVector{Union{T,Missing}}, i::Integer) where {T}
     bitmask(p)[i] ? @inbounds(values(p)[i]) : missing
 end
@@ -166,6 +168,7 @@ compose(v::AbstractVector) = v
 compose(v::AbstractVector{Types.Nullable{T}}) where {T} = NullableVector(bitmask(v),
                                                                          compose(values(v)))
 compose(v::AbstractVector{<:Types.List}) = List(offsets(v), compose(values(v)))
+compose(v::AbstractVector{<:Types.Strings}) = ConvertVector{String}(compose(codeunits.(v)))
 
 
 end  # module Arrow
