@@ -4,7 +4,7 @@
 #======================================================================================================
     \begin{general batches}
 ======================================================================================================#
-abstract type AbstractBatch end
+abstract type AbstractBatch{B<:BufferOrIO} end
 
 bodystart(b::AbstractBatch) = b.body_start
 bodylength(b::AbstractBatch) = b.body_length
@@ -12,7 +12,7 @@ bodyend(b::AbstractBatch) = bodystart(b) + bodylength(b) - 1
 
 reset!(b::AbstractBatch) = b
 
-struct EmptyBatch{H,B<:BufferOrIO} <: AbstractBatch
+struct EmptyBatch{H,B<:BufferOrIO} <: AbstractBatch{B}
     header::H
 
     # this is kept only to keep track of location in the buffer
@@ -31,7 +31,7 @@ batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer) = batch(m.header, m.bodyL
 #======================================================================================================
     \begin{RecordBatch}
 ======================================================================================================#
-mutable struct RecordBatch{B<:BufferOrIO} <: AbstractBatch
+mutable struct RecordBatch{B<:BufferOrIO} <: AbstractBatch{B}
     header::Meta.RecordBatch
 
     buffer::B
@@ -151,7 +151,7 @@ end
 #======================================================================================================
     \begin{DictionaryBatch}
 ======================================================================================================#
-mutable struct DictionaryBatch{B<:BufferOrIO} <: AbstractBatch
+mutable struct DictionaryBatch{B<:BufferOrIO} <: AbstractBatch{B}
     header::Meta.DictionaryBatch
     record_batch::RecordBatch
 
@@ -230,6 +230,7 @@ function batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1, databuf::Vector
     m = readmessage(buf, rf+8)
     m == nothing && return nothing
     i < 1 && (i = rf+8+l)
+    @bp
     batch(m, databuf, i)
 end
 

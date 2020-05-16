@@ -16,6 +16,7 @@ df = DataFrame(t, copycols=false)
 
 # collect columns for convenience
 vs = [v.args[1] for v ∈ eachcol(df)]
+vs = vs[1:3]
 
 c = Arrow.column(t, 3)
 rb = c.batches[1]

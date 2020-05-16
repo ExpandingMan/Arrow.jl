@@ -42,6 +42,11 @@ end
 
 KeyValue(p::Pair{<:Union{AbstractString,Symbol},<:Union{AbstractString,Symbol}}) = KeyValue(string(p[1]),
                                                                                             string(p[2]))
+
+function Message(h::MessageHeader, l::Integer; custom_metadata=Dict())
+    Message(MetadataVersionV4, FB.typeorder(MessageHeader, typeof(h)), h, l,
+            [KeyValue(kv) for kv ∈ pairs(custom_metadata)])
+end
 #=======================================================================================================
     \end{additional constructors}
 =======================================================================================================#
