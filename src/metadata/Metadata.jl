@@ -26,7 +26,7 @@ end
 function RecordBatch(l::Integer,
                      nodes::AbstractVector{FieldNode}=Vector{FieldNode}(undef,0),
                      bufs::AbstractVector{Buffer}=Vector{Buffer}(undef,0))
-    Meta.RecordBatch(l, nodes, bufs, nothing)
+    RecordBatch(l, nodes, bufs, nothing)
 end
 
 # TODO will need more arguments for more complicated types

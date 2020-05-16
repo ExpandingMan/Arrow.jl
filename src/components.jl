@@ -137,7 +137,7 @@ end
     NOTE: these are only intended to be called on bits data as it's being written
 ============================================================================================#
 nbytes(v::AbstractVector{Bool}) = bitpackedbytes(length(v))
-nbytes(v::AbstractVector) = length(v)*sizeof(eltype(v))
+nbytes(v::AbstractVector) = padding(length(v)*sizeof(eltype(v)))
 #============================================================================================
     \end{counting bytes}
 ============================================================================================#

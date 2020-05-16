@@ -14,6 +14,9 @@ buf = read("data/basic_stream.dat")
 t = Arrow.Table(buf)
 df = DataFrame(t, copycols=false)
 
+# collect columns for convenience
+vs = [v.args[1] for v ∈ eachcol(df)]
+
 c = Arrow.column(t, 3)
 rb = c.batches[1]
 

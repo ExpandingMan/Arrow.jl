@@ -54,7 +54,7 @@ end
 ======================================================================================================#
 
 #======================================================================================================
-    \begin{more metadata constructors}
+    \begin{batch metadata}
 ======================================================================================================#
 function Meta.Schema(sch::Tables.Schema; custom_metadata=Dict())
     Meta.Schema(Meta.EndiannessLittle,
@@ -63,21 +63,55 @@ function Meta.Schema(sch::Tables.Schema; custom_metadata=Dict())
                 [Meta.KeyValue(kv) for kv ∈ custom_metadata])
 end
 
-function Meta.RecordBatch(v::AbstractVector, i::Integer=1)
-    Meta.RecordBatch(length(v), metanodes(v), metabuffers(v, i))
+function Meta.RecordBatch(vs, nodes::AbstractVector{Meta.FieldNode}=metadata(Meta.FieldNode, vs),
+                          mbufs::AbstractVector{Meta.Buffer}=metadata(Meta.Buffer, vs))
+    # again, being careful to work on NamedTuple
+    l = length(first(vs))
+    for v ∈ vs
+        if length(v) ≠ l
+            throw(ArgumentError("can only construct a RecordBatch from equal length vectors"))
+        end
+    end
+    Meta.RecordBatch(l, nodes, mbufs)
 end
 
 # TODO need to handle child nodes!
-metanodes(v::AbstractVector) = [Meta.FieldNode(length(v), count(ismissing, v))]
-function metabuffers(v::AbstractVector, i::Integer=1)
-    bufs = Vector{Meta.Buffer}(undef, 0)
-    for (ctype, c) ∈ components(v)
-        n = nbytes(c)
-        push!(bufs, Meta.Buffer(i-1, n))
-        i += n
+Meta.FieldNode(v::AbstractVector) = Meta.FieldNode(length(v), count(ismissing, v))
+Meta.Buffer(v::AbstractVector, o::Integer, n::Integer=nbytes(v)) = Meta.Buffer(o-1, n)
+
+# using the below form so it works on NamedTuple
+metadata(::Type{Meta.FieldNode}, vs) = collect(Meta.FieldNode(v) for v ∈ vs)
+metadata!(ϕs::AbstractVector{Meta.FieldNode}, v::AbstractVector) = push!(ϕs, Meta.FieldNode(v))
+
+function bodyend(mbufs::AbstractVector{Meta.Buffer}, o::Integer=1)
+    isempty(mbufs) && return o
+    lbuf = last(mbufs)
+    lbuf.offset + lbuf.length + o
+end
+
+function metadata!(mbufs::AbstractVector{Meta.Buffer}, ::typeof(components),
+                   v::AbstractVector, o::Integer)
+    push!(mbufs, Meta.Buffer(v, o))
+end
+function metadata!(mbufs::AbstractVector{Meta.Buffer}, ::typeof(components),
+                   v::AbstractVector)
+    metadata!(mbufs, v, bodyend(mbufs))
+end
+function metadata!(mbufs::AbstractVector{Meta.Buffer}, v::AbstractVector, o::Integer)
+    for (i, (ctype, c)) ∈ enumerate(components(v))
+        be = i == 1 ? o : bodyend(mbufs)
+        metadata!(mbufs, components, c, be)
     end
-    bufs
+    mbufs
+end
+function metadata(::Type{Meta.Buffer}, vs, o::Integer=1)
+    mbufs = Vector{Meta.Buffer}(undef, 0)
+    for (i, v) ∈ enumerate(vs)
+        be = i == 1 ? o : bodyend(mbufs)
+        metadata!(mbufs, v, be)
+    end
+    mbufs
 end
 #======================================================================================================
-    \end{more metadata constructors}
+    \end{batch metadata}
 ======================================================================================================#
