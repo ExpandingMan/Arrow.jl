@@ -33,7 +33,7 @@ end
 function writemeta!(b::AbstractBatch{<:IO})
     io = b.buffer
     m = Meta.Message(b)
-    s = write(io, 0xffffffff)
+    s = write(io, CONTINUATION_INDICATOR_BYTES)
     mdata = FB.bytes(FB.build!(m))
     l = length(mdata)
     δ = paddinglength(l)
@@ -68,8 +68,11 @@ function writedata!(b::AbstractBatch{<:IO}, vs)
     end
     s
 end
+writedata!(b::EmptyBatch, vs) = 0
+writedata!(b::EmptyBatch) = 0
 
 write!(b::AbstractBatch, vs) = writemeta!(b) + writedata!(b, vs)
+write!(b::EmptyBatch) = writemeta!(b)
 #======================================================================================================
     \end{data serialization}
 ======================================================================================================#
@@ -91,6 +94,11 @@ function batch!(c::Column, b::AbstractBatch)
     push!(c.node_start_idx, init)
     push!(c.buf_start_idx, init)
     push!(c.batches, b)
+end
+
+function columns(names::AbstractVector{<:ColumnName}, vs, bs::AbstractVector{<:AbstractBatch})
+    ϕs = [Meta.Field(n, vs) for (n, vs) ∈ zip(names, vs)]
+    [Column(ϕ, bs) for ϕ ∈ ϕs]
 end
 #======================================================================================================
     \end{column meta}
@@ -193,6 +201,72 @@ function RecordBatch(locator::Function, io::IO, vs, o::Integer=position(io)+1)
     RecordBatch(header, io, bodylength(header)-1, o)
 end
 RecordBatch(io::IO, vs, o::Integer=position(io)+1) = RecordBatch(sequential_locator, io, vs, o)
+
+function batchindices(n::Integer, l::Integer)
+    a, r = divrem(l, n)
+    if r ≠ 0
+        throw(ArgumentError("array length must be integer divisible by number of batches, "*
+                            "else specify custom batch indices"))
+    end
+    map(α -> (a*(α-1)+1):(a*α), 1:n)
+end
+batchindices(n::Integer, vs) = batchindices(n, _check_vector_lengths(vs))
+
+# TODO this will have to change later to accommodate dictionary batches and stuff
+# generates all batches except for the schema
+function batches(locator::Function, io::IO, vs, o::Integer=position(io)+1;
+                 nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
+    bs = Vector{AbstractBatch}(undef, length(batch_indices))
+    for (i, bi) ∈ enumerate(batch_indices)
+        vsi = (view(v, bi) for v ∈ vs)
+        bs[i] = RecordBatch(io, vsi, o)
+        do_write && write!(bs[i], vsi)
+    end
+    bs
+end
+function batches(io::IO, vs, o::Integer=position(io)+1; kwargs...)
+    batches(sequential_locator, io, vs, o; kwargs...)
+end
+function batches!(locator::Function, io::IO, vs, o::Integer=position(io)+1; kwargs...)
+    bs = batches(loactor, io, vs, o; kwargs...)
+    for b ∈ bs
+        write!(b, vs)
+    end
+    bs
+end
+function batches!(io::IO, vs, o::Integer=position(io)+1; kwargs...)
+    batches!(sequential_locator, io, vs, o; kwargs...)
+end
 #======================================================================================================
     \end{batch metadata}
+======================================================================================================#
+
+#======================================================================================================
+    \begin{Table}
+======================================================================================================#
+function Table(locator::Function, io::IO, sch::Tables.Schema, vs, o::Integer=position(io)+1;
+               nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
+    h = EmptyBatch(Meta.Schema(sch), 0, io, o)
+    bs = batches(locator, io, vs, o; nbatches=nbatches, batch_indices=batch_indices)
+    cs = columns(sch.names, vs, bs)
+    Table(h, cs)
+end
+function Table(io::IO, sch::Tables.Schema, vs, o::Integer=position(io)+1;
+               nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
+    Table(sequential_locator, io, sch, vs, o, nbatches=nbatches, batch_indices=batchindices)
+end
+
+# TODO table header probably needs to be an empty batch
+function write!(t::Table, vs)
+    write!(EmptyBatch(t.header)) + sum(write!(b, vs) for b ∈ batches(t))
+end
+
+function Table!(locator::Function, io::IO, sch::Tables.Schema, vs, o::Integer=position(io)+1;
+                nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
+    t = Table(locator, io, sch, vs, o; nbatches=nbatches, batch_indices=batch_indices)
+    write!(t, vs)
+    t
+end
+#======================================================================================================
+    \end{Table}
 ======================================================================================================#

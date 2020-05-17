@@ -1,5 +1,5 @@
 
-# TODO we don't have deserialization from IO streams yet
+# TODO do we want batches to store the vectors being written into them?
 
 #======================================================================================================
     \begin{general batches}
@@ -21,9 +21,9 @@ struct EmptyBatch{H,B<:BufferOrIO} <: AbstractBatch{B}
     body_length::Int
 end
 
-batch(m, blen::Integer, buf::Vector{UInt8}, i::Integer) = EmptyBatch(m, buf, i, blen)
+batch(m, blen::Integer, buf::BufferOrIO, i::Integer) = EmptyBatch(m, buf, i, blen)
 
-batch(m::Meta.Message, buf::Vector{UInt8}, i::Integer) = batch(m.header, m.bodyLength, buf, i)
+batch(m::Meta.Message, buf::BufferOrIO, i::Integer) = batch(m.header, m.bodyLength, buf, i)
 #======================================================================================================
     \end{general batches}
 ======================================================================================================#
@@ -213,8 +213,8 @@ If the end of the file is reached `(0, nothing)` will be returned.
 """
 function readmessage_length(io::IO)
     eof(io) && return (0, nothing)
-    c = read(io, Int32)
-    c ≠ -1 && return (0, nothing)  # we've gotten to something that isn't a message
+    c = read(io, UInt32)
+    c ≠ CONTINUATION_INDICATOR_BYTES && return (0, nothing)  # this is not a message
     l = read(io, Int32)
     eof(io) && return (0, nothing)  # should we give warning for this
     m = readmessage(io, l)
@@ -223,8 +223,8 @@ end
 
 function batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1, databuf::Vector{UInt8}=buf)
     rf + 3 > length(buf) && return nothing
-    c = reinterpret(Int32, buf[rf:(rf+3)])[1]
-    c ≠ -1 && return nothing  # we've gotten to something that isn't a batch
+    c = reinterpret(UInt32, buf[rf:(rf+3)])[1]
+    c ≠ CONTINUATION_INDICATOR_BYTES && return nothing  # we've gotten to something that isn't a batch
     l = reinterpret(Int32, buf[(rf+4):(rf+7)])[1]
     l == 0 && return nothing
     m = readmessage(buf, rf+8)
@@ -255,31 +255,31 @@ will terminate when the end of the stream or buffer or a `0` length specifier is
 function readbatches(buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
                      i::AbstractVector{<:Integer}=fill(-1, length(rf)),
                      databuf::Vector{UInt8}=buf)
-    batches = Vector{AbstractBatch}(undef, length(rf))
+    bs = Vector{AbstractBatch}(undef, length(rf))
     for j ∈ 1:length(rf)
-        batches[j] = batch(buf, rf[j], i[j], databuf)
+        bs[j] = batch(buf, rf[j], i[j], databuf)
     end
-    batches
+    bs
 end
 function readbatches(buf::Vector{UInt8}, rf::Integer=1, max_batches::Integer=typemax(Int))
-    batches = Vector{AbstractBatch}(undef, 0)
-    while length(batches) < max_batches
+    bs = Vector{AbstractBatch}(undef, 0)
+    while length(bs) < max_batches
         b = batch(buf, rf)
         b == nothing && break
-        push!(batches, b)
+        push!(bs, b)
         rf = bodyend(b) + 1
     end
-    batches
+    bs
 end
 function readbatches(io::IO, dataio::IO=io, data_skip::Integer=0,
                      max_batches::Integer=typemax(Int))
-    batches = Vector{AbstractBatch}(undef, 0)
-    while length(batches) < max_batches
+    bs = Vector{AbstractBatch}(undef, 0)
+    while length(bs) < max_batches
         b = batch(io, dataio, data_skip)
         b == nothing && break
-        push!(batches, b)
+        push!(bs, b)
     end
-    batches
+    bs
 end
 #======================================================================================================
     \end{reading into memory}
@@ -335,8 +335,8 @@ function Column(ϕ::Meta.Field, bs::AbstractVector{<:AbstractBatch})
     Column(ϕ, bs, fill(nothing, length(bs)), fill(nothing, length(bs)))
 end
 
-function Column(sch::Meta.Schema, idx::Integer, batches::AbstractVector{<:AbstractBatch})
-    Column(sch.fields[idx], batches)
+function Column(sch::Meta.Schema, idx::Integer, bs::AbstractVector{<:AbstractBatch})
+    Column(sch.fields[idx], bs)
 end
 
 function Column(ϕ::Meta.Field, buf::Vector{UInt8}, rf::AbstractVector{<:Integer},
@@ -388,7 +388,7 @@ end
     \begin{Table}
 ======================================================================================================#
 struct Table
-    header::Meta.Schema
+    schema::EmptyBatch{Meta.Schema}
     columns::Vector{Column}
 end
 
@@ -400,14 +400,18 @@ column(t::Table, col::Integer) = columns(t)[col]
 column(t::Table, col::Symbol) = columns(t)[findfirst(c -> name(c) == col, columns(t))]
 
 ncolumns(sch::Meta.Schema) = length(sch.fields)
-ncolumns(t::Table) = ncolumns(t.header)
+ncolumns(b::EmptyBatch{Meta.Schema}) = ncolumns(b.header)
+ncolumns(t::Table) = ncolumns(t.schema)
 
-function Table(batches::AbstractVector{<:AbstractBatch})
-    if isempty(batches)
+# this should always work if we have a consistent table
+batches(t::Table) = batches(first(columns(t)))
+
+function Table(bs::AbstractVector{<:AbstractBatch})
+    if isempty(bs)
         throw(ArgumentError("no batches provided, undable to build Table"))
     end
-    sch = first(batches).header
-    cols = [Column(sch, i, batches[2:end]) for i ∈ 1:ncolumns(sch)]
+    sch = first(bs)
+    cols = [Column(sch.header, i, bs[2:end]) for i ∈ 1:ncolumns(sch)]
     isempty(cols) || setfirstcolumn!(first(cols))
     Table(sch, cols)
 end

@@ -13,6 +13,8 @@ const ALIGNMENT = 8
 
 const FILE_FORMAT_MAGIC_BYTES = b"ARROW1"
 
+const CONTINUATION_INDICATOR_BYTES = 0xffffffff
+
 const BufferOrIO = Union{IO,AbstractVector{UInt8}}
 const ColumnName = Union{AbstractString,Symbol}
 
