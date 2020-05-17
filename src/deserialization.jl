@@ -99,7 +99,7 @@ buildnext!(::Type{Missing}, rb::RecordBatch) = Fill(missing, getnode!(rb).length
 function buildnext!(::typeof(offsets), rb::RecordBatch)
     n = getnode(rb)
     b = getbuffer!(rb)
-    Primitive{DefaultOffset}(rb.buffer, bodystart(rb)+b.offset, b.length ÷ sizeof(DefaultOffset))
+    Primitive{DefaultOffset}(rb.buffer, bodystart(rb)+b.offset, n.length+1)
 end
 
 # NOTE: first node gets skipped only for strings for some unholy reason
@@ -124,12 +124,14 @@ function buildnext!(::typeof(bitmask), rb::RecordBatch)
     end
     n = getnode(rb)
     b = getbuffer!(rb)
+    @bp
     BitVector(Primitive{UInt8}(rb.buffer, bodystart(rb)+b.offset, b.length), n.length)
 end
 
 function buildnext!(::Type{Union{T,Missing}}, rb::RecordBatch) where {T}
     b = buildnext!(bitmask, rb)
     v = buildnext!(T, rb)
+    @bp
     isnothing(b) ? v : NullableVector{T,typeof(b),typeof(v)}(b, v)
 end
 

@@ -9,6 +9,14 @@ padding(n::Integer) = ((n + ALIGNMENT - 1) ÷ ALIGNMENT)*ALIGNMENT
 
 paddinglength(n::Integer) = padding(n) - n
 
+function writezeros(io::IO, n::Integer)
+    s = 0
+    for i ∈ 1:n
+        s += write(io, 0x00)
+    end
+    s
+end
+
 
 """
     writepadded(io::IO, x)
@@ -17,10 +25,8 @@ Write the data `x` to `io` with 8-byte padding. This is commonly needed in Arrow
 since Arrow requires 8-byte boundary alignment.
 """
 function writepadded(io::IO, x)
-    bw = write(io, x)
-    δ = paddinglength(bw)
-    skip(io, δ)
-    bw + δ
+    s = write(io, x)
+    s + writezeros(io, paddinglength(s))
 end
 
 
@@ -132,8 +138,4 @@ function bitpackpadded(A::AbstractVector{Bool})
     vcat(v, zeros(UInt8, npad))
 end
 
-
-function skip2position(io::IO, p::Integer)
-    n = p - position(io)
-    skip(io, n)
-end
+zeros2position(io::IO, p::Integer) = writezeros(io, p - position(io))

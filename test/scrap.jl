@@ -14,14 +14,18 @@ buf = read("data/basic_stream.dat")
 t = Arrow.Table(buf)
 df = DataFrame(t, copycols=false)
 
-# collect columns for convenience
-vs = [v.args[1] for v ∈ eachcol(df)]
-vs = vs[1:3]
+# currently broken starting at column 6
+df1 = DataFrame(col6=df.col6)
 
-c = Arrow.column(t, 3)
-#rb = c.batches[1]
-
-df1 = DataFrame(a=vs[1], b=vs[2], c=vs[3])
+vs = collect(eachcol(df1))
 
 io = IOBuffer()
-t1 = Arrow.Table!(io, Tables.schema(df1), eachcol(df1))
+t1 = Arrow.Table!(io, Tables.schema(df1), vs)
+
+t2 = Arrow.Table((seekstart(io); read(io)))
+
+b = Arrow.batches(t)[1]
+b1 = Arrow.batches(t1)[1]
+b2 = Arrow.batches(t2)[1]
+
+# TODO this needs the child nodes to be able to work!!

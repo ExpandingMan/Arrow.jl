@@ -12,21 +12,18 @@ function writebits!(io::IO, v::AbstractVector{Bool})
         idx = i:j
         s += write(io, _bitpack_byte(view(v, idx), length(idx)))
     end
-    δ = paddinglength(s)
-    skip(io, δ)
-    s + δ
+    s + writezeros(io, paddinglength(s))
 end
 function write!(io::IO, v::AbstractVector{Union{T,Unspecified}}) where {T}
     s = 0
     for x ∈ v
         s += if x ≡ unspecified
-            skip(io, sizeof(T)); sizeof(T)
+            writezeros(io, sizeof(T))
         else
             write(io, x)
         end
     end
-    skip(io, paddinglength(s))
-    s + paddinglength(s)
+    s + writezeros(io, paddinglength(s))
 end
 
 
@@ -39,9 +36,9 @@ function writemeta!(b::AbstractBatch{<:IO})
     δ = paddinglength(l)
     s += write(io, Int32(l+δ))
     s += write(io, mdata)
-    skip(io, δ)
+    s += writezeros(io, δ)
     b.body_start = position(io) + 1  # body always starts immediatley after metadata
-    s + δ
+    s
 end
 
 function writearray!(b::AbstractBatch{<:IO}, v::AbstractVector)
@@ -49,7 +46,7 @@ function writearray!(b::AbstractBatch{<:IO}, v::AbstractVector)
     s = 0
     for (ctype, c) ∈ components(v)
         mb = getbuffer!(b)
-        skip2position(io, bodystart(b)+mb.offset-1)
+        zeros2position(io, bodystart(b)+mb.offset-1)
         s += if eltype(c) == Bool  # we only support writing bits for Bool vectors
             writebits!(io, c)
         else
@@ -126,7 +123,7 @@ function _check_vector_lengths(vs,
     l
 end
 
-# TODO need to handle child nodes!
+# TODO need to handle child nodes!!!
 Meta.FieldNode(v::AbstractVector) = Meta.FieldNode(length(v), count(ismissing, v))
 Meta.Buffer(v::AbstractVector, o::Integer, n::Integer=nbytes(v)) = Meta.Buffer(o-1, n)
 
@@ -245,7 +242,9 @@ function Table(locator::Function, io::IO, sch::Tables.Schema, vs;
     h = EmptyBatch(Meta.Schema(sch), io, 1, 0)
     bs = batches(locator, io, vs; nbatches=nbatches, batch_indices=batch_indices)
     cs = columns(sch.names, vs, bs)
-    Table(h, cs)
+    t = Table(h, cs)
+    isempty(columns(t)) || setfirstcolumn!(first(columns(t)))
+    t
 end
 function Table(io::IO, sch::Tables.Schema, vs;
                nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
