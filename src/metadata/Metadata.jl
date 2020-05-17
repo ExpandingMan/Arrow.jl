@@ -100,7 +100,7 @@ function juliatype(fp::FloatingPoint)
 end
 juliatype(::Null) = Missing
 
-isnullabletype(::Type{T}) where {T} = T <: Union{S,Missing} where {S}
+isnullabletype(::Type{T}) where {T} = T isa Type{Union{S,Missing}} where {S}
 
 arrowtype(::Type{Int8}) = Int_(8, true)
 arrowtype(::Type{Int16}) = Int_(16, true)

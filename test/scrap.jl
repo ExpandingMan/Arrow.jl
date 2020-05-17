@@ -21,5 +21,7 @@ vs = vs[1:3]
 c = Arrow.column(t, 3)
 #rb = c.batches[1]
 
+df1 = DataFrame(a=vs[1], b=vs[2], c=vs[3])
+
 io = IOBuffer()
-rb = Arrow.RecordBatch(io, vs)
+t1 = Arrow.Table!(io, Tables.schema(df1), eachcol(df1))

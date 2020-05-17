@@ -12,7 +12,7 @@ bodyend(b::AbstractBatch) = bodystart(b) + bodylength(b) - 1
 
 reset!(b::AbstractBatch) = b
 
-struct EmptyBatch{H,B<:BufferOrIO} <: AbstractBatch{B}
+mutable struct EmptyBatch{H,B<:BufferOrIO} <: AbstractBatch{B}
     header::H
 
     # this is kept only to keep track of location in the buffer
