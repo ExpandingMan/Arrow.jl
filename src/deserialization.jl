@@ -230,7 +230,6 @@ function batch(buf::Vector{UInt8}, rf::Integer=1, i::Integer=-1, databuf::Vector
     m = readmessage(buf, rf+8)
     m == nothing && return nothing
     i < 1 && (i = rf+8+l)
-    @bp
     batch(m, databuf, i)
 end
 

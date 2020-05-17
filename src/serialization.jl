@@ -5,6 +5,17 @@
     \begin{data serialization}
 ======================================================================================================#
 write!(io::IO, v::AbstractVector) = writepadded(io, v)
+function writebits!(io::IO, v::AbstractVector{Bool})
+    s = 0
+    for i ∈ 1:8:length(v)
+        j = min(i+7, lastindex(v))
+        idx = i:j
+        s += write(io, _bitpack_byte(view(v, idx), length(idx)))
+    end
+    δ = paddinglength(s)
+    skip(io, δ)
+    s + δ
+end
 function write!(io::IO, v::AbstractVector{Union{T,Unspecified}}) where {T}
     s = 0
     for x ∈ v
@@ -18,28 +29,47 @@ function write!(io::IO, v::AbstractVector{Union{T,Unspecified}}) where {T}
     s + paddinglength(s)
 end
 
-function write!(rb::RecordBatch, v::AbstractVector)
-    s = 0
-    for (ctype, c) ∈ components(v)
-        s += write!(rb, c)
-    end
-    s
-end
-
 
 function writemeta!(b::AbstractBatch{<:IO})
     io = b.buffer
     m = Meta.Message(b)
     s = write(io, 0xffffffff)
-    # TODO wtf, bogus message being written
     mdata = FB.bytes(FB.build!(m))
     l = length(mdata)
     δ = paddinglength(l)
     s += write(io, Int32(l+δ))
     s += write(io, mdata)
     skip(io, δ)
+    b.body_start = position(io) + 1  # body always starts immediatley after metadata
     s + δ
 end
+
+function writearray!(b::AbstractBatch{<:IO}, v::AbstractVector)
+    io = b.buffer
+    s = 0
+    for (ctype, c) ∈ components(v)
+        mb = getbuffer!(b)
+        skip2position(io, bodystart(b)+mb.offset-1)
+        s += if eltype(c) == Bool  # we only support writing bits for Bool vectors
+            writebits!(io, c)
+        else
+            write!(io, c)
+        end
+    end
+    s
+end
+
+function writedata!(b::AbstractBatch{<:IO}, vs)
+    setnodeindex!(b)
+    setbufferindex!(b)
+    s = 0
+    for v ∈ vs
+        s += writearray!(b, v)
+    end
+    s
+end
+
+write!(b::AbstractBatch, vs) = writemeta!(b) + writedata!(b, vs)
 #======================================================================================================
     \end{data serialization}
 ======================================================================================================#

@@ -19,6 +19,7 @@ vs = [v.args[1] for v ∈ eachcol(df)]
 vs = vs[1:3]
 
 c = Arrow.column(t, 3)
-rb = c.batches[1]
+#rb = c.batches[1]
 
-
+io = IOBuffer()
+rb = Arrow.RecordBatch(io, vs)

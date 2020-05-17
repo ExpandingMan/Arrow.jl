@@ -133,11 +133,7 @@ function bitpackpadded(A::AbstractVector{Bool})
 end
 
 
-"""
-    bare_eltype(v)
-
-Gets the eltype of an `AbstractVector`, except that if this is of the form `Union{T,Missing}`,
-return `T` instead.
-"""
-bare_eltype(::AbstractVector{T}) where {T} = T
-bare_eltype(::AbstractVector{Union{T,Missing}}) where{T} = T
+function skip2position(io::IO, p::Integer)
+    n = p - position(io)
+    skip(io, n)
+end
