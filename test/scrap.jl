@@ -9,6 +9,7 @@ const A = Arrow
 
 using Arrow: build
 
+#=
 buf = read("data/basic_stream.dat")
 
 t = Arrow.Table(buf)
@@ -27,5 +28,5 @@ t2 = Arrow.Table((seekstart(io); read(io)))
 b = Arrow.batches(t)[1]
 b1 = Arrow.batches(t1)[1]
 b2 = Arrow.batches(t2)[1]
-
+=#
 # TODO this needs the child nodes to be able to work!!

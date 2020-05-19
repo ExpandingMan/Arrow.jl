@@ -148,7 +148,7 @@ function Meta.Message(rb::AbstractBatch; custom_metadata=Dict())
 end
 
 # using the below form so it works on NamedTuple
-metadata(::Type{Meta.FieldNode}, vs) = reduce(vcat, filednodes.(vs))
+metadata(::Type{Meta.FieldNode}, vs) = reduce(vcat, fieldnodes.(vs))
 metadata!(ϕs::AbstractVector{Meta.FieldNode}, v::AbstractVector) = push!(ϕs, Meta.FieldNode(v))
 
 function bodylength(mbufs::AbstractVector{Meta.Buffer}, o::Integer=1)

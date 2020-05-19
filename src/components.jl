@@ -27,9 +27,6 @@ value_length(::Type, x) = length(x)
 Base.size(v::Values) = (sum(value_length.((eltype(parent(v)),), v.parent)),)
 
 _values_return(::Type{T}, A, κ) where {T} = convert(T, A[κ])
-function _values_return(::Type{Union{T,Unspecified}}, A, κ) where {T}
-    ismissing(A) ? unspecified : convert(T, A[κ])
-end
 
 # adapted from LazyArrays.jl `vcat_getindex` method
 function _getindex(v::Values, i::Integer)
@@ -43,14 +40,15 @@ function _getindex(v::Values, i::Integer)
     throw(BoundsError(v, i))
 end
 
-# TODO clean this up, keep getting ambiguities, fuck
-
+# all methods are needed to resolve method ambiguities
 function Base.getindex(v::Values{<:AbstractVector,<:AbstractVector{Types.Nullable{K}}},
                        i::Integer) where {T,K}
     convert(eltype(v), ismissing(v.parent[i]) ? [] : v.parent[i])
 end
-# the below are to resolve method ambiguities
-Base.getindex(v::Values{T,<:AbstractVector{<:Types.Values}}, i::Integer) where {T} = _getindex(v, i)
+function Base.getindex(v::Values{Union{T,Unspecified},<:AbstractVector{Types.Nullable{K}}},
+                       i::Integer) where {T,K}
+    ismissing(parent(v)[i]) ? unspecified : convert(T, parent(v)[i])
+end
 Base.getindex(v::Values{T,<:AbstractVector{<:Types.List}}, i::Integer) where {T} = _getindex(v, i)
 Base.getindex(v::Values{T,<:AbstractVector{<:Types.Strings}}, i::Integer) where {T} = _getindex(v, i)
 
