@@ -14,30 +14,16 @@ include("file.jl")
 #=======================================================================================================
     \begin{additional constructors}
 =======================================================================================================#
-# NOTE: no idea how I'll do dictionary stuff with this yet
-function childfield(::Type{T};
-                    dictionary::Union{DictionaryEncoding,Nothing}=nothing,
-                    custom_metadata=Dict(), name::Union{AbstractString,Symbol}="item") where {T}
-    t = childtype(T)
-    isnothing(t) && return nothing
-    Field(string(name), t, dictionary=dictionary, custom_metadata=custom_metadata)
-end
-
 function RecordBatch(l::Integer,
                      nodes::AbstractVector{FieldNode}=Vector{FieldNode}(undef,0),
                      bufs::AbstractVector{Buffer}=Vector{Buffer}(undef,0))
     RecordBatch(l, nodes, bufs, nothing)
 end
 
-# TODO will need more arguments for more complicated types
-function Field(name::Union{AbstractString,Symbol}, ::Type{T};
-               dictionary::Union{DictionaryEncoding,Nothing}=nothing,
-               custom_metadata=Dict()) where {T}
-    child = childfield(T)
-    Field(string(name), isnullabletype(T), FB.typeorder(DType, typeof(arrowtype(T))),
-          arrowtype(T), dictionary,
-          child == nothing ? [] : [childfield(T)],
-          [KeyValue(kv) for kv ∈ pairs(custom_metadata)])
+function Field(name::Union{AbstractString,Symbol}, isnullable::Bool, atype::DType, children=[];
+               dictionary=nothing, custom_metadata=Dict())
+    Field(string(name), isnullable, FB.typeorder(DType, typeof(atype)), atype, dictionary,
+          children, [KeyValue(kv) for kv ∈ pairs(custom_metadata)])
 end
 
 KeyValue(p::Pair{<:Union{AbstractString,Symbol},<:Union{AbstractString,Symbol}}) = KeyValue(string(p[1]),
@@ -100,8 +86,6 @@ function juliatype(fp::FloatingPoint)
 end
 juliatype(::Null) = Missing
 
-isnullabletype(::Type{T}) where {T} = T isa Type{Union{S,Missing}} where {S}
-
 arrowtype(::Type{Int8}) = Int_(8, true)
 arrowtype(::Type{Int16}) = Int_(16, true)
 arrowtype(::Type{Int32}) = Int_(32, true)
@@ -128,10 +112,6 @@ arrowtype(::Type{DateTime}) = Timestamp(TimeUnitMILLISECOND, "")
 arrowtype(::Type{<:AbstractVector}) = List()
 
 arrowtype(::Type{Union{T,Missing}}) where {T} = arrowtype(T)
-
-childtype(::Type) = nothing
-childtype(::Type{<:AbstractVector{T}}) where {T} = T
-childtype(::Type{<:Union{Missing,<:AbstractVector{T}}}) where {T} = T
 
 function readmessage(buf::AbstractVector{UInt8}, i::Integer, j::Integer=length(buf))
     FB.read(Message, @view buf[i:j])

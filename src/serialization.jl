@@ -77,9 +77,20 @@ write!(b::EmptyBatch) = writemeta!(b)
 #======================================================================================================
     \begin{column meta}
 ======================================================================================================#
-function Meta.Field(name::ColumnName, v::AbstractVector; custom_metadata=Dict())
-    Meta.Field(name, eltype(v); custom_metadata=custom_metadata)
+function Meta.Field(name::ColumnName, ::Type{T}; custom_metadata=Dict()) where {T}
+    Meta.Field(name, isnullabletype(T), Meta.arrowtype(T), [], custom_metadata=custom_metadata)
 end
+function Meta.Field(name::ColumnName, ::Type{K}; custom_metadata=Dict()
+                   ) where {T,K<:Types.Nullable{<:Types.List{T}}}
+    Meta.Field(name, isnullabletype(K), Meta.arrowtype(K), [Meta.Field(T)],
+               custom_metadata=custom_metadata)
+end
+function Meta.Field(name::ColumnName, ::Type{Types.Null}; custom_metadata=custom_metadata)
+    Meta.Field(name, false, Meta.Null(), [], custom_metadata=custom_metadata)
+end
+Meta.Field(::Type{T}; custom_metadata=Dict()) where {T} = Meta.Field("item", T,
+                                                                     custom_metadata=custom_metadata)
+
 
 newcolumn(ϕ::Meta.Field) = Column(ϕ, Vector{AbstractBatch}(undef, 0))
 function newcolumn(name::ColumnName, v::AbstractVector; custom_metadata=Dict())
@@ -123,16 +134,21 @@ function _check_vector_lengths(vs,
     l
 end
 
-# TODO need to handle child nodes!!!
+# note, this does not account for child nodes
 Meta.FieldNode(v::AbstractVector) = Meta.FieldNode(length(v), count(ismissing, v))
 Meta.Buffer(v::AbstractVector, o::Integer, n::Integer=nbytes(v)) = Meta.Buffer(o-1, n)
+
+fieldnodes(v::AbstractVector{T}) where {T} = [Meta.FieldNode(v)]
+function fieldnodes(v::AbstractVector{<:Types.Nullable{<:Types.List}})
+    [Meta.FieldNode(v), fieldnodes(values(v))...]
+end
 
 function Meta.Message(rb::AbstractBatch; custom_metadata=Dict())
     Meta.Message(rb.header, bodylength(rb), custom_metadata=custom_metadata)
 end
 
 # using the below form so it works on NamedTuple
-metadata(::Type{Meta.FieldNode}, vs) = collect(Meta.FieldNode(v) for v ∈ vs)
+metadata(::Type{Meta.FieldNode}, vs) = reduce(vcat, filednodes.(vs))
 metadata!(ϕs::AbstractVector{Meta.FieldNode}, v::AbstractVector) = push!(ϕs, Meta.FieldNode(v))
 
 function bodylength(mbufs::AbstractVector{Meta.Buffer}, o::Integer=1)

@@ -118,12 +118,7 @@ function bitpack!(io::IO, A::AbstractVector{Bool}, (a, b)::Tuple=divrem(length(A
         trail = (a*8+1):length(A)
         s += write(io, _bitpack_byte(view(A, trail), length(trail)))
     end
-    if pad
-        δ = padding(s) - s
-        for i ∈ 1:δ
-            write(io, 0x00)
-        end
-    end
+    pad && writezeros(io, paddinglength(s))
     io
 end
 
@@ -139,3 +134,11 @@ function bitpackpadded(A::AbstractVector{Bool})
 end
 
 zeros2position(io::IO, p::Integer) = writezeros(io, p - position(io))
+
+"""
+    isnullabletype(T)
+
+Determines whether the type `T` is nullable, i.e. whether it is of the form `Union{S,Missing}`.
+"""
+isnullabletype(::Type) = false
+isnullabletype(::Type{Union{T,Missing}}) where {T} = true

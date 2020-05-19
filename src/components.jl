@@ -18,12 +18,13 @@ Values(v::AbstractVector) = Values{values_eltype(v),typeof(v)}(v)
 
 Base.parent(v::Values) = v.parent
 
-value_length(::Type{Union{T,Unspecified}}, ::Missing) where {T} = 1
-value_length(::Type, ::Missing) = 0
+value_length(::Type, ::Missing) = 1
+# this method is needed to resolve ambiguity
+value_length(::Type{Types.Nullable{T}}, ::Missing) where {T} = 1
+value_length(::Type{Types.Nullable{T}}, x) where {T}  = 1
 value_length(::Type, x) = length(x)
 
-Base.size(v::Values) = (sum(value_length.((eltype(v),), v.parent)),)
-Base.size(v::Values{<:Types.List}) = size(parent(v))
+Base.size(v::Values) = (sum(value_length.((eltype(parent(v)),), v.parent)),)
 
 _values_return(::Type{T}, A, κ) where {T} = convert(T, A[κ])
 function _values_return(::Type{Union{T,Unspecified}}, A, κ) where {T}
@@ -31,19 +32,27 @@ function _values_return(::Type{Union{T,Unspecified}}, A, κ) where {T}
 end
 
 # adapted from LazyArrays.jl `vcat_getindex` method
-function Base.getindex(v::Values, i::Integer)
+function _getindex(v::Values, i::Integer)
     T = eltype(v)
     κ = i
     for A ∈ v.parent
-        n = value_length(T, A)
+        n = value_length(eltype(parent(v)), A)
         κ ≤ n && return _values_return(T, A, κ)
         κ -= n
     end
     throw(BoundsError(v, i))
 end
-function Base.getindex(v::Values{<:Types.List{T}}, i::Integer) where {T}
-    ismissing(parent(v)[i]) ? T[] : parent(v)[i]
+
+# TODO clean this up, keep getting ambiguities, fuck
+
+function Base.getindex(v::Values{<:AbstractVector,<:AbstractVector{Types.Nullable{K}}},
+                       i::Integer) where {T,K}
+    convert(eltype(v), ismissing(v.parent[i]) ? [] : v.parent[i])
 end
+# the below are to resolve method ambiguities
+Base.getindex(v::Values{T,<:AbstractVector{<:Types.Values}}, i::Integer) where {T} = _getindex(v, i)
+Base.getindex(v::Values{T,<:AbstractVector{<:Types.List}}, i::Integer) where {T} = _getindex(v, i)
+Base.getindex(v::Values{T,<:AbstractVector{<:Types.Strings}}, i::Integer) where {T} = _getindex(v, i)
 
 values(v::AbstractVector) = v
 values(v::AbstractVector{Types.Nullable{T}}) where {T} = Values(v)

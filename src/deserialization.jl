@@ -110,6 +110,8 @@ function buildnext!(::Type{<:Types.List{T}}, rb::RecordBatch, skipnode::Bool=tru
     List(o, v)
 end
 
+buildnext!(::Type{<:Types.Null}, rb::RecordBatch) = Fill(missing, getnode!(rb).length)
+
 function buildnext!(::Type{<:Types.Strings}, rb::RecordBatch)
     l = buildnext!(Vector{UInt8}, rb, false)
     ConvertVector{String}(l)
@@ -124,14 +126,12 @@ function buildnext!(::typeof(bitmask), rb::RecordBatch)
     end
     n = getnode(rb)
     b = getbuffer!(rb)
-    @bp
     BitVector(Primitive{UInt8}(rb.buffer, bodystart(rb)+b.offset, b.length), n.length)
 end
 
-function buildnext!(::Type{Union{T,Missing}}, rb::RecordBatch) where {T}
+function buildnext!(::Type{Types.Nullable{T}}, rb::RecordBatch) where {T}
     b = buildnext!(bitmask, rb)
     v = buildnext!(T, rb)
-    @bp
     isnothing(b) ? v : NullableVector{T,typeof(b),typeof(v)}(b, v)
 end
 
