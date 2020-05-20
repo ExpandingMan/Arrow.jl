@@ -100,7 +100,7 @@ Base.iterate(ci::ComponentIterator, ::Nothing) = nothing
 Base.IndexStyle(::Type{<:ArrowVector}) = IndexLinear()
 
 function Base.getindex(p::ArrowVector{Union{T,Missing}}, i::Integer) where {T}
-    bitmask(p)[i] ? @inbounds(values(p)[i]) : missing
+    bitmask(p)[i] ? convert(T, @inbounds(values(p)[i])) : missing
 end
 
 function Base.setindex!(p::ArrowVector{Union{T,Missing}}, ::Missing, i::Integer) where {T}

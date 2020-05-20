@@ -3,71 +3,53 @@
 
     TODO what about Bool and other "special" types?
 =====================================================================================================#
-
-# TODO you definitely need to split this somehow for the different cases,
-# because right now it's too confusing to follow which method is getting called
-
-struct Values{T,V<:AbstractVector} <: ArrowVector{T}
+struct Unmask{T,V<:AbstractVector} <: ArrowVector{T}
     parent::V
 end
 
-values_eltype(::Type{T}) where {T} = T
-values_eltype(::Type{<:Types.List{T}}) where {T} = T
-values_eltype(::Type{Types.Nullable{T}}) where {T} = Union{T,Unspecified}
-values_eltype(::Type{Types.Nullable{T}}) where {T<:AbstractVector} = T
+Unmask(v::AbstractVector{Types.Nullable{T}}) where {T<:Types.List} = Unmask{T,typeof(v)}(v)
+Unmask(v::AbstractVector{Types.Nullable{T}}) where {T} = Unmask{Union{T,Unspecified},typeof(v)}(v)
 
-values_eltype(v::AbstractVector) = values_eltype(eltype(v))
+Base.parent(v::Unmask) = v.parent
 
-Values(v::AbstractVector) = Values{values_eltype(v),typeof(v)}(v)
+Base.size(v::Unmask) = size(parent(v))
 
-Base.parent(v::Values) = v.parent
+function Base.getindex(v::Unmask{K}, i::Integer) where {T,K<:Types.List{T}}
+    convert(K, ismissing(parent(v)[i]) ? T[] : parent(v)[i])
+end
+function Base.getindex(v::Unmask{Union{T,Unspecified}}, i::Integer) where {T}
+    ismissing(parent(v)[i]) ? unspecified : convert(T, parent(v)[i])
+end
 
-value_length(::Type, ::Missing) = 1
-# this method is needed to resolve ambiguity
-value_length(::Type{Types.Nullable{T}}, ::Missing) where {T} = 1
-value_length(::Type{Types.Nullable{T}}, x) where {T}  = 1
-value_length(::Type, x) = length(x)
 
-Base.size(v::Values) = (sum(value_length.((eltype(parent(v)),), v.parent)),)
+struct Flatten{T,V<:AbstractVector} <: ArrowVector{T}
+    parent::V
+end
 
-_values_return(::Type{T}, A, κ) where {T} = convert(T, A[κ])
+Flatten(v::AbstractVector{<:Types.List{T}}) where {T} = Flatten{T,typeof(v)}(v)
+function Flatten(v::AbstractVector{<:Types.Strings}) 
+    vv = codeunits.(v)
+    Flatten{UInt8,typeof(vv)}(vv)
+end
 
-# adapted from LazyArrays.jl `vcat_getindex` method
-function _getindex(v::Values, i::Integer)
-    T = eltype(v)
+Base.parent(v::Flatten) = v.parent
+
+Base.size(v::Flatten) = (sum(length.(parent(v))),)
+
+function Base.getindex(v::Flatten, i::Integer)
     κ = i
-    for A ∈ v.parent
-        n = value_length(eltype(parent(v)), A)
-        κ ≤ n && return _values_return(T, A, κ)
+    for A ∈ parent(v)
+        n = length(A)
+        κ ≤ n && return convert(eltype(v), A[κ])
         κ -= n
     end
     throw(BoundsError(v, i))
 end
 
-# all methods are needed to resolve method ambiguities
-function Base.getindex(v::Values{<:AbstractVector,<:AbstractVector{Types.Nullable{K}}},
-                       i::Integer) where {T,K}
-    convert(eltype(v), ismissing(v.parent[i]) ? [] : v.parent[i])
-end
-function Base.getindex(v::Values{Union{T,Unspecified},<:AbstractVector{Types.Nullable{K}}},
-                       i::Integer) where {T,K}
-    ismissing(v.parent[i]) ? unspecified : convert(T, v.parent[i])
-end
-Base.getindex(v::Values{T,<:AbstractVector{<:Types.List}}, i::Integer) where {T} = _getindex(v, i)
-Base.getindex(v::Values{T,<:AbstractVector{<:Types.Strings}}, i::Integer) where {T} = _getindex(v, i)
-
 values(v::AbstractVector) = v
-values(v::AbstractVector{Types.Nullable{T}}) where {T} = Values(v)
-values(v::AbstractVector{<:Types.List}) = Values(v)
-values(v::AbstractVector{<:Types.Strings}) = Values(codeunits.(v))
-function values(v::AbstractVector{Types.Nullable{T}}) where {T<:Types.Strings}
-    Values((s -> ismissing(s) ? missing : codeunits(s)).(v))
-end
-
-function valuesbytes(v::AbstractVector{T}; pad::Bool=true) where {T}
-    n = length(v)*sizeof(T)
-    pad ? padding(n) : n
-end
+values(v::AbstractVector{Types.Nullable{T}}) where {T} = Unmask(v)
+values(v::AbstractVector{<:Types.List}) = Flatten(v)
+values(v::AbstractVector{<:Types.Strings}) = Flatten(v)
 #====================================================================================================
     \end{Values}
 ====================================================================================================#

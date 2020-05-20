@@ -227,13 +227,17 @@ function batchindices(n::Integer, l::Integer)
 end
 batchindices(n::Integer, vs) = batchindices(n, _check_vector_lengths(vs))
 
+# this checks whether the batches should be built from views,
+# will cause dynamic dispatch but should be worth it until I have better views
+_batches_check_views(v::AbstractVector, bi) = eachindex(v) == length(bi) ? v : view(v, bi)
+
 # TODO this will have to change later to accommodate dictionary batches and stuff
 # generates all batches except for the schema
 function batches(locator::Function, io::IO, vs;
                  nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
     bs = Vector{AbstractBatch}(undef, length(batch_indices))
     for (i, bi) ∈ enumerate(batch_indices)
-        vsi = (view(v, bi) for v ∈ vs)
+        vsi = (_batches_check_views(v, bi) for v ∈ vs)
         bs[i] = RecordBatch(io, vsi)
     end
     bs
