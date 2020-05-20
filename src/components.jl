@@ -3,6 +3,10 @@
 
     TODO what about Bool and other "special" types?
 =====================================================================================================#
+
+# TODO you definitely need to split this somehow for the different cases,
+# because right now it's too confusing to follow which method is getting called
+
 struct Values{T,V<:AbstractVector} <: ArrowVector{T}
     parent::V
 end
@@ -47,7 +51,7 @@ function Base.getindex(v::Values{<:AbstractVector,<:AbstractVector{Types.Nullabl
 end
 function Base.getindex(v::Values{Union{T,Unspecified},<:AbstractVector{Types.Nullable{K}}},
                        i::Integer) where {T,K}
-    ismissing(parent(v)[i]) ? unspecified : convert(T, parent(v)[i])
+    ismissing(v.parent[i]) ? unspecified : convert(T, v.parent[i])
 end
 Base.getindex(v::Values{T,<:AbstractVector{<:Types.List}}, i::Integer) where {T} = _getindex(v, i)
 Base.getindex(v::Values{T,<:AbstractVector{<:Types.Strings}}, i::Integer) where {T} = _getindex(v, i)

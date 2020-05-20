@@ -37,7 +37,7 @@ offsets(l::List) = l.offsets
 values(l::List) = l.values
 
 Base.size(l::List) = (length(offsets(l))-1,)
-Base.getindex(l::List, i::Integer) = values(l)[offset1_range(l, i)]
+Base.getindex(l::List{T}, i::Integer) where {T} = convert(Vector{T}, values(l)[offset1_range(l, i)])
 #============================================================================================
     \end{List}
 ============================================================================================#

@@ -105,7 +105,7 @@ function batch!(c::Column, b::AbstractBatch)
 end
 
 function columns(names, vs, bs::AbstractVector{<:AbstractBatch})
-    ϕs = [Meta.Field(n, vs) for (n, vs) ∈ zip(names, vs)]
+    ϕs = [Meta.Field(n, eltype(v)) for (n, v) ∈ zip(names, vs)]
     [Column(ϕ, bs) for ϕ ∈ ϕs]
 end
 #======================================================================================================
@@ -138,9 +138,13 @@ end
 Meta.FieldNode(v::AbstractVector) = Meta.FieldNode(length(v), count(ismissing, v))
 Meta.Buffer(v::AbstractVector, o::Integer, n::Integer=nbytes(v)) = Meta.Buffer(o-1, n)
 
+# TODO this *STILL* isn't working quite right
 fieldnodes(v::AbstractVector{T}) where {T} = [Meta.FieldNode(v)]
-function fieldnodes(v::AbstractVector{<:Types.Nullable{<:Types.List}})
+function fieldnodes(v::AbstractVector{<:Types.List})
     [Meta.FieldNode(v), fieldnodes(values(v))...]
+end
+function fieldnodes(v::AbstractVector{Types.Nullable{T}}) where {T}
+    [Meta.FieldNode(v), fieldnodes(values(values(v)))...]
 end
 
 function Meta.Message(rb::AbstractBatch; custom_metadata=Dict())
@@ -148,8 +152,7 @@ function Meta.Message(rb::AbstractBatch; custom_metadata=Dict())
 end
 
 # using the below form so it works on NamedTuple
-metadata(::Type{Meta.FieldNode}, vs) = reduce(vcat, fieldnodes.(vs))
-metadata!(ϕs::AbstractVector{Meta.FieldNode}, v::AbstractVector) = push!(ϕs, Meta.FieldNode(v))
+metadata(::Type{Meta.FieldNode}, vs)  = reduce(vcat, (fieldnodes(v) for v ∈ vs))
 
 function bodylength(mbufs::AbstractVector{Meta.Buffer}, o::Integer=1)
     isempty(mbufs) && return o
@@ -262,10 +265,12 @@ function Table(locator::Function, io::IO, sch::Tables.Schema, vs;
     isempty(columns(t)) || setfirstcolumn!(first(columns(t)))
     t
 end
+
 function Table(io::IO, sch::Tables.Schema, vs;
                nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
-    Table(sequential_locator, io, sch, vs, o, nbatches=nbatches, batch_indices=batchindices)
+    Table(sequential_locator, io, sch, vs; nbatches=nbatches, batch_indices=batch_indices)
 end
+Table(io::IO, tab; kwargs...) = Table(io, Tables.schema(tab), Tables.columntable(tab); kwargs...)
 
 write!(t::Table, vs) = write!(t.schema) + sum(write!(b, vs) for b ∈ batches(t))
 
@@ -279,6 +284,7 @@ function Table!(io::IO, sch::Tables.Schema, vs;
                 nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
     Table!(sequential_locator, io, sch, vs, nbatches=nbatches, batch_indices=batch_indices)
 end
+Table!(io::IO, tab; kwargs...) = Table!(io, Tables.schema(tab), Tables.columntable(tab); kwargs...)
 #======================================================================================================
     \end{Table}
 ======================================================================================================#
