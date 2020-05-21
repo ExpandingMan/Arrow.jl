@@ -139,6 +139,7 @@ Meta.FieldNode(v::AbstractVector) = Meta.FieldNode(length(v), count(ismissing, v
 Meta.Buffer(v::AbstractVector, o::Integer, n::Integer=nbytes(v)) = Meta.Buffer(o-1, n)
 
 # TODO this *STILL* isn't working quite right
+# TODO doing weird shit on views still!!! make sure you test that
 fieldnodes(v::AbstractVector{T}) where {T} = [Meta.FieldNode(v)]
 function fieldnodes(v::AbstractVector{<:Types.List})
     [Meta.FieldNode(v), fieldnodes(values(v))...]
