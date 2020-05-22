@@ -375,7 +375,7 @@ end
     pool = CategoricalPool{Int,Int32}([-999, 55, 42])
     ref = CategoricalArray{Union{Int,Missing},1}(Int32[1,0,2,1,3], pool)
     @test typeof(d.refs) == NullablePrimitive{Int32}
-    @test typeof(d.pool) == Primitive{Int64}
+    @test typeof(d.pool) == Primitive{Int}
     @test d[1] == -999
     @test ismissing(d[2])
     @test d[3] == 55
