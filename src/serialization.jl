@@ -56,6 +56,10 @@ function writearray!(b::AbstractBatch{<:IO}, v::AbstractVector)
     s
 end
 
+function writeclose!(io::IO)
+    write(io, CONTINUATION_INDICATOR_BYTES) + write(io, Int32(0))
+end
+
 function writedata!(b::AbstractBatch{<:IO}, vs)
     setnodeindex!(b)
     setbufferindex!(b)
@@ -134,19 +138,17 @@ function _check_vector_lengths(vs,
     l
 end
 
-# note, this does not account for child nodes
 Meta.FieldNode(v::AbstractVector) = Meta.FieldNode(length(v), count(ismissing, v))
 Meta.Buffer(v::AbstractVector, o::Integer, n::Integer=nbytes(v)) = Meta.Buffer(o-1, n)
 
-# TODO this *STILL* isn't working quite right
-# TODO doing weird shit on views still!!! make sure you test that
 fieldnodes(v::AbstractVector{T}) where {T} = [Meta.FieldNode(v)]
 function fieldnodes(v::AbstractVector{<:Types.List})
     [Meta.FieldNode(v), fieldnodes(values(v))...]
 end
 function fieldnodes(v::AbstractVector{Types.Nullable{T}}) where {T}
-    [Meta.FieldNode(v), fieldnodes(values(values(v)))...]
+    [fieldnodes(values(v))...]
 end
+fieldnodes(v::AbstractVector{<:Types.Strings}) = [Meta.FieldNode(v)]
 
 function Meta.Message(rb::AbstractBatch; custom_metadata=Dict())
     Meta.Message(rb.header, bodylength(rb), custom_metadata=custom_metadata)
@@ -277,7 +279,11 @@ function Table(io::IO, sch::Tables.Schema, vs;
 end
 Table(io::IO, tab; kwargs...) = Table(io, Tables.schema(tab), Tables.columntable(tab); kwargs...)
 
-write!(t::Table, vs) = write!(t.schema) + sum(write!(b, vs) for b ∈ batches(t))
+function write!(t::Table, vs)
+    s = write!(t.schema) + sum(write!(b, vs) for b ∈ batches(t))
+    # TODO this probably has to be different for files
+    s + writeclose!(last(batches(t)).buffer)
+end
 
 function Table!(locator::Function, io::IO, sch::Tables.Schema, vs;
                 nbatches::Integer=1, batch_indices=batchindices(nbatches, vs))
@@ -290,6 +296,18 @@ function Table!(io::IO, sch::Tables.Schema, vs;
     Table!(sequential_locator, io, sch, vs, nbatches=nbatches, batch_indices=batch_indices)
 end
 Table!(io::IO, tab; kwargs...) = Table!(io, Tables.schema(tab), Tables.columntable(tab); kwargs...)
+
+# TODO this is very experimental
+function table(arg::Pair; kwargs...)
+    if last(arg) ≡ Vector{UInt8}
+        io = IOBuffer();
+        Table!(io, first(arg); kwargs...)
+        seekstart(io)
+        read(io)
+    else
+        throw(ArgumentError("unrecognized output type $O"))
+    end
+end
 #======================================================================================================
     \end{Table}
 ======================================================================================================#

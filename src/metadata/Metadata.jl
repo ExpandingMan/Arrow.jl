@@ -86,6 +86,14 @@ function juliatype(fp::FloatingPoint)
 end
 juliatype(::Null) = Missing
 
+"""
+    arrowtype(T)
+
+Return the "most shallow" data type associated with the Julia type `T`.
+For example, an element of type `Vector{Int}` will simply return `List`.
+Deeper types which appear in the children of the `Field` metadata must
+be determined recursively.
+"""
 arrowtype(::Type{Int8}) = Int_(8, true)
 arrowtype(::Type{Int16}) = Int_(16, true)
 arrowtype(::Type{Int32}) = Int_(32, true)

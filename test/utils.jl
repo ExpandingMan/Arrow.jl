@@ -8,5 +8,14 @@ it can be extremely useful for rapid troubleshooting.
 include("gendata.jl")
 using Arrow
 
+pyreadbuffer(v::AbstractVector{UInt8}) = pa.ipc.open_stream(v).read_pandas()
+
 # TODO this doesn't know if it's getting the file format
 tablefrompy(df; kwargs...) = Arrow.Table(pyarrowbuffer(df; kwargs...))
+
+function tablefromjl(df; nbatches::Integer=1)
+    io = IOBuffer()
+    Arrow.Table!(io, df, nbatches=nbatches)
+    seekstart(io)
+    Arrow.Table(read(io))
+end

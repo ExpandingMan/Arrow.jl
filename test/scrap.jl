@@ -1,39 +1,32 @@
-using Arrow, BenchmarkTools, DataFrames, Tables
-using Debugger
+include("utils.jl")
+Revise.track("utils.jl")
+Revise.track("gendata.jl")
+using BenchmarkTools, Debugger
 
 const FB = Arrow.FB
 const Meta = Arrow.Meta
 const A = Arrow
 
-# NOTE: currently need `copycols=false` for lazily loaded dataframe
 
-using Arrow: build
+# TODO for some reason when writing multiple batches, something goes terribly wrong with
+# subsequent batches
 
-buf = read("data/deep_nesting.dat")
 
-t = Arrow.Table(buf)
-df = DataFrame(t, copycols=false)
+# TODO also, the below is to try to sort out some disaster that's happening with
+# python not being able to read the flatbuffers
+df = testdf1(3)[:, 1:1]
 
-v = df.col2
-vv = view(v, 1:2)
+pybuf = pyarrowbuffer(df)
+jlbuf = Arrow.table(df=>Vector{UInt8})
 
-w = A.values(v)
-ww = A.values(vv)
-w1 = A.values(w)
-ww1 = A.values(ww)
+pystr = String(copy(pybuf))
+jlstr = String(copy(jlbuf))
 
-# currently broken starting at column 6
-#=
-df1 = DataFrame(col6=df.col6)
+pyt = Arrow.Table(pybuf)
+jlt = Arrow.Table(jlbuf)
 
-vs = collect(eachcol(df1))
+pysch = pyt.schema.header
+jlsch = jlt.schema.header
 
-io = IOBuffer()
-t1 = Arrow.Table!(io, Tables.schema(df1), vs)
-
-t2 = Arrow.Table((seekstart(io); read(io)))
-
-b = Arrow.batches(t)[1]
-b1 = Arrow.batches(t1)[1]
-b2 = Arrow.batches(t2)[1]
-=#
+pyϕ = pysch.fields[1]
+jlϕ = jlsch.fields[1]

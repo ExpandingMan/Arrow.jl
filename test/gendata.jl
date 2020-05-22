@@ -74,7 +74,7 @@ writepyfile(fname::AbstractString, bordf; kwargs...) = write(fname, pyarrowbuffe
 A very basic test table with only (non-null) bits-types and strings.
 """
 function testdf1(N::Integer=10)
-    DataFrame(A=rand(0:9, N), B=rand(N), C=[randstring(rand(0:12)) for n ∈ 1:N])
+    DataFrame(col1=rand(0:9, N), col2=rand(N), col3=[randstring(rand(0:12)) for n ∈ 1:N])
 end
 
 """
@@ -88,10 +88,14 @@ function testdf2()
               col3=["fire", "walk", "with", "me"],
               col4=[[1,2], [3,4], [5,6], [7,8,9]],
               col5=[missing, "kirk", "αβabcdefg", "spock"],
-              col6=[[1.0, missing, 2.0], [2.0, 3.0, 4.0], [missing, missing], missing],
+              # evenutally we want to support decoding this in Arrow, but for now need annotations
+              col6=[[1.0, missing, 2.0], Union{Float64,Missing}[2.0, 3.0, 4.0],
+                    Union{Float64,Missing}[missing, missing], missing],
               col7=[["ab", "αβ"], ["kirk", "spock", "bones"], ["123"], ["fire"]],
               col8=[["abc"], missing, ["123", "fire"], ["walk", "with"]],
-              col9=[["abcd", missing], ["kirk", "spock"], missing, ["bones"]]
+              # again, we need this for now
+              col9=[["abcd", missing], Union{String,Missing}["kirk", "spock"], missing,
+                    Union{String,Missing}["bones"]]
              )
 end
 

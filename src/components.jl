@@ -8,6 +8,7 @@ struct Unmask{T,V<:AbstractVector} <: ArrowVector{T}
 end
 
 Unmask(v::AbstractVector{Types.Nullable{T}}) where {T<:Types.List} = Unmask{T,typeof(v)}(v)
+Unmask(v::AbstractVector{Types.Nullable{T}}) where {T<:Types.Strings} = Unmask{T,typeof(v)}(v)
 Unmask(v::AbstractVector{Types.Nullable{T}}) where {T} = Unmask{Union{T,Unspecified},typeof(v)}(v)
 
 Base.parent(v::Unmask) = v.parent
@@ -16,6 +17,9 @@ Base.size(v::Unmask) = size(parent(v))
 
 function Base.getindex(v::Unmask{K}, i::Integer) where {T,K<:Types.List{T}}
     convert(K, ismissing(parent(v)[i]) ? T[] : parent(v)[i])
+end
+function Base.getindex(v::Unmask{K}, i::Integer) where {K<:Types.Strings}
+    convert(eltype(v), ismissing(parent(v)[i]) ? "" : parent(v)[i]) 
 end
 function Base.getindex(v::Unmask{Union{T,Unspecified}}, i::Integer) where {T}
     ismissing(parent(v)[i]) ? unspecified : convert(T, parent(v)[i])
@@ -131,6 +135,7 @@ end
 ============================================================================================#
 nbytes(v::AbstractVector{Bool}) = bitpackedbytes(length(v))
 nbytes(v::AbstractVector) = padding(length(v)*sizeof(eltype(v)))
+nbytes(v::AbstractVector{Union{Unspecified,T}}) where {T} = padding(length(v)*sizeof(T))
 #============================================================================================
     \end{counting bytes}
 ============================================================================================#
