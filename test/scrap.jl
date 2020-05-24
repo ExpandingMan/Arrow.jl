@@ -3,30 +3,39 @@ Revise.track("utils.jl")
 Revise.track("gendata.jl")
 using BenchmarkTools, Debugger
 
+include("pyfbtests.jl")
+
 const FB = Arrow.FB
 const Meta = Arrow.Meta
 const A = Arrow
 
 
+function fbroundtrip(obj)
+    io = IOBuffer()
+    FB.serialize(io, obj)
+    seekstart(io)
+    FB.deserialize(io, typeof(obj))
+end
+
+
 # TODO for some reason when writing multiple batches, something goes terribly wrong with
 # subsequent batches
 
+# TODO now python can't read the batch, claiming something with compression method
 
-# TODO also, the below is to try to sort out some disaster that's happening with
-# python not being able to read the flatbuffers
 df = testdf1(3)[:, 1:1]
 
 pybuf = pyarrowbuffer(df)
 jlbuf = Arrow.table(df=>Vector{UInt8})
 
-pystr = String(copy(pybuf))
-jlstr = String(copy(jlbuf))
+py_rbbuf = pybuf[(137+8):end]
+py_jlbuf = jlbuf[(169+8):end]
 
 pyt = Arrow.Table(pybuf)
 jlt = Arrow.Table(jlbuf)
 
-pysch = pyt.schema.header
-jlsch = jlt.schema.header
+pym = Arrow.readmessage(pybuf, 137+8)
+jlm = Arrow.readmessage(jlbuf, 169+8)
 
-pyϕ = pysch.fields[1]
-jlϕ = jlsch.fields[1]
+pyb = pym.header
+jlb = jlm.header
