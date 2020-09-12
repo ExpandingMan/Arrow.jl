@@ -6,7 +6,7 @@
 This is a pure Julia implementation of the [Apache Arrow](https://arrow.apache.org) data standard.  This package provides Julia `AbstractVector` objects for
 referencing data that conforms to the Arrow standard.  This allows users to seamlessly interface Arrow formatted data with a great deal of existing Julia code.
 
-Please see this [document](https://arrow.apache.org/docs/memory_layout.html) for a description of the Arrow memory layout.
+Please see this [documentation](https://arrow.apache.org/docs/format/Columnar.html#physical-memory-layout) for a description of the Arrow memory layout.
 
 ***WARNING*** As of right now this package uses Julia `Ptr` (pointer) objects and "unsafe" methods.  This is for performance reasons.  It should in principle be
 possible to make this package completely safe with little to no loss in performance, but we are waiting on some performance improvements in `Base`.  While
