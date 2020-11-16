@@ -1,3 +1,13 @@
+# ⛔Deprecation Notice ⛔
+This package is deprecated in favor of
+[JuliaData/Arrow.jl](https://github.com/JuliaData/Arrow.jl).
+
+As of writing, this package is still used by Feather.jl which reads and writes legacy
+feather v1 files.  However, as Feather v1 is deprecated in favor of Feather v2 which is
+implemented by JuliaData/Arrow.jl, it is unlikely that Feather.jl will be maintained in
+the future.  We recommend using either Feather.jl or pyarrow to convert your data to the
+latest feather format.
+
 # Arrow
 
 [![Build Status](https://travis-ci.org/ExpandingMan/Arrow.jl.svg?branch=master)](https://travis-ci.org/ExpandingMan/Arrow.jl)
